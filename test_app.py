@@ -14,6 +14,7 @@ import app
 import database
 
 def run_tests():
+    database.init_database()
     client = app.app.test_client()
 
     # 1. Kiểm tra trang đăng nhập có thương hiệu Bigcom
@@ -230,7 +231,56 @@ def run_tests():
     assert del_team_name not in del_data['teams']
     print(f"25. [PASS] API xóa tổ đội '{del_team_name}' hoạt động chính xác.")
 
-    print("\n===> TẤT CẢ 25 BÀI TEST TÍCH HỢP QUẢN LÝ TỒN KHO BIGCOM ĐỀU VƯỢT QUA 100%!")
+    # 26. Kiểm tra giao diện Mua vào & Đơn giá mới (có cột Số PNK, nút Nhập đơn giá, Xuất Excel)
+    res_pur_page = client.get('/mua-vao')
+    assert res_pur_page.status_code == 200
+    assert "Số PNK" in res_pur_page.text
+    assert "Thêm Đơn Giá / Mua Vào" in res_pur_page.text
+    assert "Xuất Excel" in res_pur_page.text
+    print("26. [PASS] Giao diện Mua vào & Đơn giá hiển thị chuẩn form Nhập kho có cột Số PNK.")
+
+    # 27. Kiểm tra thêm giao dịch mua vào mới qua POST /mua-vao
+    with database.get_db_connection() as conn:
+        conn.execute("DELETE FROM purchases WHERE voucher_code = 'GM99'")
+        conn.execute("DELETE FROM receipts WHERE voucher_code = 'GM99'")
+        conn.commit()
+
+    res_add_pur = client.post('/mua-vao', data={
+        'voucher_code': 'GM99',
+        'purchase_date': '2026-11-21',
+        'supplier': 'Cadisun Test',
+        'inspection_record': 'BBNT99',
+        'notes': 'Test mua vào tự động',
+        'sync_to_receipt': '0',
+        'material_code[]': ['olsp20'],
+        'quantity[]': ['200'],
+        'unit_price[]': ['15000']
+    }, follow_redirects=True)
+    assert res_add_pur.status_code == 200
+    assert 'GM99' in res_add_pur.text
+    assert 'Cadisun Test' in res_add_pur.text
+    print("27. [PASS] Thêm mới giao dịch mua vào & đơn giá thành công.")
+
+    # 28. Kiểm tra nút mũi tên import sang bảng Nhập kho
+    # Lấy ID của giao dịch GM99 vừa thêm
+    pur_list = database.get_all_purchases(search_query='GM99')
+    assert len(pur_list) > 0
+    test_pur_id = pur_list[0]['id']
+    res_sync = client.get(f'/mua-vao/import-sang-nhap-kho/{test_pur_id}', follow_redirects=True)
+    assert res_sync.status_code == 200
+    assert 'Đã đẩy thành công vật tư' in res_sync.text or 'Đã nhập kho' in res_sync.text
+    # Kiểm tra trong bảng receipts xem GM99 đã xuất hiện chưa
+    rec_check = database.get_all_receipts(search_query='GM99')
+    assert len(rec_check) > 0
+    print("28. [PASS] Nút mũi tên [➡️ Nhập kho] đồng bộ tức thời vật tư sang bảng Nhập kho thành công 100%.")
+
+    # 29. Kiểm tra xuất file Excel Mua vào & Đơn giá
+    res_pur_excel = client.get('/xuat-mua-vao-excel')
+    assert res_pur_excel.status_code == 200
+    assert len(res_pur_excel.data) > 1000
+    print(f"29. [PASS] Xuất file Excel Mua vào & Đơn giá thành công ({len(res_pur_excel.data)} bytes).")
+
+    print("\n===> TẤT CẢ 29 BÀI TEST TÍCH HỢP QUẢN LÝ TỒN KHO BIGCOM ĐỀU VƯỢT QUA 100%!")
 
 if __name__ == "__main__":
     run_tests()

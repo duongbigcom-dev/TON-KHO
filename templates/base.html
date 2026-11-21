@@ -85,10 +85,6 @@
           </a>
           {% endif %}
 
-          <a href="{{ url_for('reconciliation_view') }}" class="flex items-center gap-2.5 pl-7 pr-3 py-2 text-white/90 hover:bg-[#124782] transition-colors {% if request.endpoint == 'reconciliation_view' %}sidebar-item-active{% endif %}">
-            <span>•</span> Đối soát Công trường - KT
-          </a>
-
           <a href="{{ url_for('reconciliation_cdt_view') }}" class="flex items-center gap-2.5 pl-7 pr-3 py-2 text-white/90 hover:bg-[#124782] transition-colors {% if request.endpoint == 'reconciliation_cdt_view' %}sidebar-item-active{% endif %}">
             <span>•</span> Đối soát CĐT / Thầu chính (ĐNVT)
           </a>
@@ -196,10 +192,6 @@
             <span>📤</span> Xuất kho
           </a>
           {% endif %}
-
-          <a href="{{ url_for('reconciliation_view') }}" class="px-4 py-2.5 border-b-2 font-bold transition-colors flex items-center gap-1.5 {% if request.endpoint == 'reconciliation_view' %}border-[#195faa] text-[#195faa] bg-blue-50/50{% else %}border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50{% endif %}">
-            <span>⚖️</span> Đối soát Công trường - KT
-          </a>
 
           <a href="{{ url_for('reconciliation_cdt_view') }}" class="px-4 py-2.5 border-b-2 font-bold transition-colors flex items-center gap-1.5 {% if request.endpoint == 'reconciliation_cdt_view' %}border-[#195faa] text-[#195faa] bg-blue-50/50{% else %}border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50{% endif %}">
             <span>🤝</span> Đối soát CĐT (ĐNVT)

@@ -58,7 +58,15 @@
   - Tạo cấu hình [.gitignore](file:///e:/TON%20KHO/.gitignore) loại trừ file rác, file tạm thời.
   - Đóng gói toàn bộ mã nguồn, cấu hình, giao diện, tài liệu và CSDL khởi tạo `vattu_donghoa.db`.
   - Kết nối và đẩy (push) thành công 100% lên GitHub Repository: [https://github.com/duongbigcom-dev/TON-KHO](https://github.com/duongbigcom-dev/TON-KHO).
-- [x] **Kiểm thử tự động (`test_app.py`)**: Toàn bộ 25/25 bài test tích hợp đều đạt tỷ lệ thành công 100%.
+- [x] **Bỏ phân hệ 'Đối soát Công trường - Kế toán' & Chuẩn hóa phân hệ 'Mua vào & Đơn giá'**:
+  - Ẩn hoàn toàn phân hệ "Đối soát Công trường - KT" trên thanh Sidebar và thanh Tab phân hệ kho (giữ lại phân hệ "Đối soát CĐT / Thầu chính ĐNVT").
+  - Chuẩn hóa phân hệ **"Mua vào & Đơn giá"** theo cấu trúc hiện đại tương tự Nhập kho tại [purchases.html](file:///e:/TON%20KHO/templates/purchases.html).
+  - Bỏ cột Số hóa đơn/Phiếu mua; bổ sung cột **Số PNK** (Số Phiếu Nhập Kho).
+  - Tích hợp nút mũi tên **`[ ➡️ Nhập kho ]`** trên từng dòng giao dịch: Bấm 1 chạm là tự động import dòng vật tư sang bảng **Nhập kho** (cập nhật tồn kho tức thời) và chuyển trạng thái thành `✅ Đã nhập kho`.
+  - Bổ sung tùy chọn `[x] Tự động import sang Nhập kho` trong cửa sổ popup khi lập phiếu mua.
+  - Cửa sổ Popup "Thêm Đơn Giá / Mua Vào" mở rộng khổ lớn (`max-w-6xl`), có đầy đủ cột **STT** tự đánh số 1, 2, 3... liên tục, hỗ trợ tìm kiếm 2 chiều theo Mã hoặc Tên chi tiết vật tư, căn giữa ô Hãng và ĐVT, tự động tính **Thành Tiền = Số Lượng × Đơn Giá**.
+  - Tích hợp nút **`📥 Xuất Excel`** ([/xuat-mua-vao-excel](file:///e:/TON%20KHO/app.py#L1155-L1260)) xuất sổ mua vào và đơn giá chuẩn định dạng `#,##0`.
+- [x] **Kiểm thử tự động (`test_app.py`)**: Toàn bộ 29/29 bài test tích hợp đều đạt tỷ lệ thành công 100%.
 
 ---
 

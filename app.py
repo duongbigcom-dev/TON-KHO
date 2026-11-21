@@ -1072,35 +1072,238 @@ def api_check_stock():
 @app.route("/doi-soat")
 @login_required
 def reconciliation_view():
-    reconcile_data = database.get_reconciliation_summary()
-    return render_template("reconcile.html", items=reconcile_data)
+    """
+    Phân hệ đối soát nội bộ cũ - tự động chuyển hướng đến Đối soát CĐT.
+    """
+    return redirect(url_for("reconciliation_cdt_view"))
 
 
 # ==============================================================================
 # ROUTE MUA VÀO & ĐƠN GIÁ: BẢO MẬT CHỈ KẾ TOÁN & ADMIN
+# TƯƠNG TỰ NHẬP KHO, CÓ CỘT SỐ PNK VÀ NÚT MŨI TÊN IMPORT SANG NHẬP KHO
 # ==============================================================================
 
-@app.route("/mua-vao")
+@app.route("/mua-vao", methods=["GET", "POST"])
 @login_required
 @role_required(["admin", "office"])
 def purchases_view():
-    try:
-        with database.get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT p.id, p.voucher_code, p.purchase_date, p.material_code, m.name AS material_name,
-                       m.unit, ROUND(p.quantity) as quantity, ROUND(p.unit_price) as unit_price,
-                       ROUND(p.total_amount) as total_amount, p.supplier, p.inspection_record, p.notes
-                FROM purchases p
-                LEFT JOIN materials m ON p.material_code = m.code
-                ORDER BY p.id DESC;
-            """)
-            purchases = [dict(row) for row in cursor.fetchall()]
-    except Exception as exc:
-        logger.error(f"Lỗi khi truy vấn mua vào: {exc}", exc_info=True)
-        purchases = []
+    next_pnk = database.get_next_voucher_code("receipt")
 
-    return render_template("purchases.html", purchases=purchases)
+    if request.method == "POST":
+        voucher_code = request.form.get("voucher_code", "").strip() or next_pnk
+        purchase_date = request.form.get("purchase_date", "").strip() or datetime.date.today().strftime("%Y-%m-%d")
+        supplier = request.form.get("supplier", "").strip()
+        inspection_record = request.form.get("inspection_record", "").strip()
+        notes = request.form.get("notes", "").strip()
+        sync_to_receipt = (request.form.get("sync_to_receipt") == "1")
+        created_by = session["user"]["full_name"]
+
+        material_codes = request.form.getlist("material_code[]")
+        quantities = request.form.getlist("quantity[]")
+        unit_prices = request.form.getlist("unit_price[]")
+
+        saved_count = 0
+        for code, qty_str, price_str in zip(material_codes, quantities, unit_prices):
+            if code and code.strip():
+                try:
+                    qty = round(float(qty_str)) if qty_str else 0
+                    price = round(float(price_str)) if price_str else 0
+                    if qty > 0:
+                        database.add_purchase_entry(
+                            voucher_code=voucher_code,
+                            purchase_date=purchase_date,
+                            material_code=code.strip(),
+                            quantity=qty,
+                            unit_price=price,
+                            supplier=supplier,
+                            inspection_record=inspection_record,
+                            notes=notes,
+                            sync_to_receipt=sync_to_receipt,
+                            created_by=created_by
+                        )
+                        saved_count += 1
+                except ValueError:
+                    continue
+
+        if saved_count > 0:
+            extra_msg = " và đã tự động đồng bộ sang Bảng Nhập kho!" if sync_to_receipt else "."
+            flash(f"Đã lưu thành công {saved_count} mục mua vào & đơn giá (Số PNK: {voucher_code}){extra_msg}", "success")
+            return redirect(url_for("purchases_view"))
+        else:
+            flash("Vui lòng nhập ít nhất 1 dòng vật tư với số lượng lớn hơn 0.", "warning")
+
+    search_q = request.args.get("q", "").strip()
+    supplier_filter = request.args.get("supplier", "").strip()
+    from_date = request.args.get("from_date", "").strip()
+    to_date = request.args.get("to_date", "").strip()
+
+    purchases = database.get_all_purchases(
+        search_query=search_q if search_q else None,
+        supplier_filter=supplier_filter if supplier_filter else None,
+        from_date=from_date if from_date else None,
+        to_date=to_date if to_date else None
+    )
+    all_suppliers = database.get_all_suppliers()
+    materials = database.get_all_materials()
+
+    return render_template(
+        "purchases.html",
+        purchases=purchases,
+        all_suppliers=all_suppliers,
+        materials=materials,
+        next_pnk=next_pnk,
+        search_q=search_q,
+        supplier_filter=supplier_filter,
+        from_date=from_date,
+        to_date=to_date,
+        today_str=datetime.date.today().strftime("%Y-%m-%d")
+    )
+
+
+@app.route("/mua-vao/import-sang-nhap-kho/<int:purchase_id>", methods=["GET", "POST"])
+@login_required
+@role_required(["admin", "office"])
+def import_purchase_to_receipt_route(purchase_id: int):
+    """
+    Thực hiện hành động bấm mũi tên: Đẩy 1 dòng vật tư mua vào sang bảng Nhập kho.
+    """
+    created_by = session["user"]["full_name"]
+    success, msg = database.import_purchase_to_receipt(purchase_id, created_by=created_by)
+    if success:
+        flash(msg, "success")
+    else:
+        flash(msg, "danger")
+    return redirect(url_for("purchases_view"))
+
+
+@app.route("/xuat-mua-vao-excel")
+@login_required
+@role_required(["admin", "office"])
+def export_purchases_excel():
+    """
+    Xuất danh sách mua vào & đơn giá ra file Excel chuẩn Bigcom M&E.
+    """
+    try:
+        search_q = request.args.get("q", "").strip()
+        supplier_filter = request.args.get("supplier", "").strip()
+        from_date = request.args.get("from_date", "").strip()
+        to_date = request.args.get("to_date", "").strip()
+
+        purchases = database.get_all_purchases(
+            search_query=search_q if search_q else None,
+            supplier_filter=supplier_filter if supplier_filter else None,
+            from_date=from_date if from_date else None,
+            to_date=to_date if to_date else None
+        )
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Mua Vào & Đơn Giá"
+
+        headers = [
+            "STT", "Số PNK", "Ngày Mua", "Mã VT", "Tên Chi Tiết Vật Tư",
+            "Hãng", "ĐVT", "Số Lượng Mua", "Đơn Giá (VNĐ)", "Thành Tiền (VNĐ)",
+            "Nhà Cung Cấp", "Số BBNT", "Ghi Chú", "Trạng Thái Nhập Kho"
+        ]
+
+        last_col_letter = openpyxl.utils.get_column_letter(len(headers))
+        ws.merge_cells(f"A1:{last_col_letter}1")
+        title_cell = ws["A1"]
+        title_cell.value = f"QUẢN LÝ TỒN KHO BIGCOM - SỔ MUA VÀO & THEO DÕI ĐƠN GIÁ ({datetime.date.today().strftime('%d/%m/%Y')})"
+        title_cell.font = Font(name="Segoe UI", size=13, bold=True, color="195FAA")
+        title_cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        ws.append(headers)
+
+        header_fill = PatternFill(start_color="EAF2FA", end_color="EAF2FA", fill_type="solid")
+        header_font = Font(name="Segoe UI", size=11, bold=True, color="195FAA")
+        thin_border = Border(
+            left=Side(style="thin", color="D3D3D3"),
+            right=Side(style="thin", color="D3D3D3"),
+            top=Side(style="thin", color="D3D3D3"),
+            bottom=Side(style="thin", color="D3D3D3")
+        )
+
+        for col_num in range(1, len(headers) + 1):
+            cell = ws.cell(row=2, column=col_num)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.border = thin_border
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        for idx, p in enumerate(purchases, 1):
+            status_text = "Đã nhập kho" if p.get("is_imported") else "Chưa nhập kho"
+            row_data = [
+                idx,
+                p["voucher_code"] or "",
+                p["purchase_date"] or "",
+                p["material_code"],
+                p.get("material_name") or p["material_code"],
+                p.get("brand") or "",
+                p.get("unit") or "",
+                round(p["quantity"]) if p.get("quantity") else 0,
+                round(p["unit_price"]) if p.get("unit_price") else 0,
+                round(p["total_amount"]) if p.get("total_amount") else 0,
+                p.get("supplier") or "",
+                p.get("inspection_record") or "",
+                p.get("notes") or "",
+                status_text
+            ]
+            ws.append(row_data)
+            current_row = idx + 2
+            for col_num in range(1, len(row_data) + 1):
+                c = ws.cell(row=current_row, column=col_num)
+                c.border = thin_border
+                c.font = Font(name="Segoe UI", size=10)
+                if col_num in [1, 2, 3, 6, 7, 11, 12, 14]:
+                    c.alignment = Alignment(horizontal="center", vertical="center")
+                elif col_num in [8, 9, 10]:
+                    c.number_format = "#,##0"
+                    c.alignment = Alignment(horizontal="right", vertical="center")
+                    if col_num == 10:
+                        c.font = Font(name="Segoe UI", size=10, bold=True, color="065F46")
+                else:
+                    c.alignment = Alignment(horizontal="left", vertical="center")
+
+        col_widths = {
+            "A": 7,   # STT
+            "B": 14,  # Số PNK
+            "C": 14,  # Ngày Mua
+            "D": 16,  # Mã VT
+            "E": 36,  # Tên chi tiết VT
+            "F": 15,  # Hãng
+            "G": 10,  # ĐVT
+            "H": 16,  # Số lượng
+            "I": 18,  # Đơn giá
+            "J": 22,  # Thành tiền
+            "K": 22,  # NCC
+            "L": 16,  # BBNT
+            "M": 26,  # Ghi chú
+            "N": 18   # Trạng thái
+        }
+        for col, width in col_widths.items():
+            ws.column_dimensions[col].width = width
+
+        ws.row_dimensions[1].height = 36
+        ws.row_dimensions[2].height = 28
+        for r_idx in range(3, len(purchases) + 3):
+            ws.row_dimensions[r_idx].height = 22
+
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        filename = f"So_Mua_Vao_Don_Gia_Bigcom_{datetime.date.today().strftime('%Y%m%d')}.xlsx"
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=filename,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    except Exception as exc:
+        logger.error(f"Lỗi khi xuất file Excel Mua vào: {exc}", exc_info=True)
+        flash(f"Lỗi khi xuất file Excel: {str(exc)}", "danger")
+        return redirect(url_for("purchases_view"))
 
 
 # ==============================================================================

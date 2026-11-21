@@ -1,72 +1,487 @@
 {% extends "base.html" %}
 
-{% block title %}Mua Vào & Đơn Giá - QUẢN LÝ TỒN KHO BIGCOM{% endblock %}
+{% block title %}Mua vào & Đơn giá - QUẢN LÝ TỒN KHO BIGCOM{% endblock %}
 
 {% block content %}
 <div class="flex-1 flex flex-col h-full space-y-2 overflow-hidden">
 
-  <!-- Header Tiêu Đề -->
+  <!-- TOP HEADER & ACTION BAR -->
   <div class="flex items-center justify-between flex-shrink-0">
     <div class="flex items-center gap-2">
-      <h1 class="text-base font-bold text-slate-800">
-        Mua Hàng <span class="text-slate-400">/</span> <span class="text-[#195faa]">Sổ Mua Vào & Theo Dõi Đơn Giá</span>
+      <h1 class="text-base font-bold text-slate-800 tracking-tight flex items-center gap-2">
+        <span>Kế Toán</span>
+        <span class="text-slate-400 font-normal">/</span>
+        <span class="text-xs font-semibold text-[#195faa]">Mua vào & Đơn giá</span>
       </h1>
-      <span class="text-xs font-semibold px-2 py-0.5 bg-purple-100 text-purple-800 rounded">Bảo Mật Kế Toán</span>
+      <span class="text-[11px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-bold">
+        {{ purchases|length }} Giao dịch
+      </span>
+      <span class="text-xs text-slate-500 ml-2 hidden sm:inline">Số PNK kế tiếp: <b class="text-[#195faa] font-bold">{{ next_pnk }}</b></span>
     </div>
-    <span class="text-xs text-slate-500 bg-white px-2 py-1 rounded border border-slate-300">
-      Chỉ Kế Toán & Admin có quyền truy cập
-    </span>
+
+    <!-- Quick Action Buttons -->
+    <div class="flex items-center gap-2">
+      {% if is_office_or_admin %}
+      <button type="button" onclick="openPurchaseModal()" class="px-3 py-1.5 rounded bg-[#195faa] hover:bg-[#124782] text-white font-semibold text-xs flex items-center gap-1.5 shadow-sm transition-colors">
+        <span>+</span> Thêm Đơn Giá / Mua Vào
+      </button>
+      {% endif %}
+      <a href="{{ url_for('export_purchases_excel', q=search_q, supplier=supplier_filter, from_date=from_date, to_date=to_date) }}" class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-sm transition-colors">
+        <span>📥</span> Xuất Excel
+      </a>
+    </div>
   </div>
 
-  <!-- Bảng Mua Vào Kéo Trượt (Làm tròn số nguyên) -->
+  <!-- TOOLBAR FILTER FORM -->
+  <form method="GET" action="{{ url_for('purchases_view') }}" class="bg-white p-2.5 rounded border border-slate-300 shadow-sm flex flex-wrap items-center gap-2.5 flex-shrink-0 text-xs">
+    
+    <!-- Lọc Ngày tháng -->
+    <div class="flex items-center gap-1.5">
+      <span class="text-slate-600 font-medium">Từ ngày</span>
+      <input type="date" name="from_date" value="{{ from_date }}" class="px-2 py-1 rounded border border-slate-300 text-slate-700 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+      <span class="text-slate-600 font-medium">Đến</span>
+      <input type="date" name="to_date" value="{{ to_date }}" class="px-2 py-1 rounded border border-slate-300 text-slate-700 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+    </div>
+
+    <div class="h-4 w-px bg-slate-300 hidden md:block"></div>
+
+    <!-- Lọc Nhà Cung Cấp -->
+    <div class="flex items-center gap-1">
+      <span class="text-slate-600 font-medium">Nhà Cung Cấp</span>
+      <select name="supplier" class="px-2 py-1 rounded border border-slate-300 bg-slate-50 text-slate-700 font-medium focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+        <option value="">--Tất cả nhà cung cấp--</option>
+        {% for s in all_suppliers %}
+          <option value="{{ s }}" {% if supplier_filter == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Ô tìm kiếm từ khóa -->
+    <div class="flex items-center gap-1 flex-1 min-w-[200px]">
+      <span class="text-slate-600 font-medium">NVL</span>
+      <input type="text" name="q" value="{{ search_q }}" placeholder="Tìm theo số PNK, mã VT, tên VT, nhà cung cấp, số BBNT, ghi chú..." class="w-full px-2.5 py-1 rounded border border-slate-300 bg-slate-50 focus:bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+    </div>
+
+    <!-- Nút Lấy dữ liệu -->
+    <button type="submit" class="px-3 py-1 rounded bg-[#195faa] hover:bg-[#124782] text-white font-bold flex items-center gap-1.5 shadow-sm transition-colors whitespace-nowrap">
+      <span>🔍</span> Lấy dữ liệu
+    </button>
+
+    {% if search_q or supplier_filter or from_date or to_date %}
+      <a href="{{ url_for('purchases_view') }}" class="px-2 py-1 rounded border border-slate-300 text-slate-600 hover:bg-slate-100 text-[11px]">
+        Xóa lọc
+      </a>
+    {% endif %}
+  </form>
+
+  <!-- BẢNG HIỂN THỊ CHỦ YẾU: LỊCH SỬ MUA VÀO & ĐƠN GIÁ (STICKY HEADER, CUỘN 2 CHIỀU) -->
   <div class="flex-1 bg-white rounded border border-slate-300 shadow-sm overflow-hidden flex flex-col">
+    
     <div class="flex-1 overflow-x-auto overflow-y-auto">
-      <table class="w-full text-xs text-left border-collapse min-w-[950px]">
+      <table class="w-full text-xs text-left border-collapse min-w-[1200px]">
         <thead class="sticky top-0 bg-slate-100 text-slate-700 z-10 border-b border-slate-300 font-bold select-none shadow-sm">
           <tr>
-            <th class="p-2 border-r border-slate-300 text-center w-12">STT</th>
-            <th class="p-2 border-r border-slate-300 w-24">Số PNK</th>
-            <th class="p-2 border-r border-slate-300 w-24">Ngày Mua</th>
-            <th class="p-2 border-r border-slate-300 w-28">Mã VT</th>
-            <th class="p-2 border-r border-slate-300">Tên Vật Tư</th>
+            <th class="p-2 border-r border-slate-300 text-center w-12 bg-slate-100">STT</th>
+            <th class="p-2 border-r border-slate-300 text-center w-24">Số PNK</th>
+            <th class="p-2 border-r border-slate-300 text-center w-24">Ngày Mua</th>
+            <th class="p-2 border-r border-slate-300 w-28 whitespace-nowrap">Mã VT</th>
+            <th class="p-2 border-r border-slate-300 min-w-[220px]">Tên Chi Tiết Vật Tư</th>
+            <th class="p-2 border-r border-slate-300 text-center min-w-[100px]">Hãng</th>
             <th class="p-2 border-r border-slate-300 text-center w-16">ĐVT</th>
-            <th class="p-2 border-r border-slate-300 text-right w-24">Số Lượng</th>
-            <th class="p-2 border-r border-slate-300 text-right w-32 bg-blue-50 text-[#195faa] font-bold">Đơn Giá (VNĐ)</th>
-            <th class="p-2 border-r border-slate-300 text-right w-36 bg-emerald-50 text-emerald-800 font-black">Thành Tiền (VNĐ)</th>
-            <th class="p-2 border-r border-slate-300 w-36">Nhà Cung Cấp</th>
-            <th class="p-2 border-r border-slate-300 w-24">Số BBNT</th>
-            <th class="p-2">Ghi Chú</th>
+            <th class="p-2 border-r border-slate-300 text-right w-24 font-bold text-slate-700">Số Lượng Mua</th>
+            <th class="p-2 border-r border-slate-300 text-right w-28 font-bold text-[#195faa] bg-blue-50/40">Đơn Giá (VNĐ)</th>
+            <th class="p-2 border-r border-slate-300 text-right w-32 font-black text-emerald-800 bg-emerald-50/40">Thành Tiền (VNĐ)</th>
+            <th class="p-2 border-r border-slate-300 text-center min-w-[130px]">Nhà Cung Cấp</th>
+            <th class="p-2 border-r border-slate-300 text-center w-24 text-slate-600">Số BBNT</th>
+            <th class="p-2 border-r border-slate-300 min-w-[150px]">Ghi Chú</th>
+            <th class="p-2 text-center w-32 bg-slate-100">Đẩy Sang Nhập Kho</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-200">
           {% for p in purchases %}
-          <tr class="hover:bg-blue-50/40 transition-colors {% if loop.index % 2 == 0 %}bg-slate-50/50{% else %}bg-white{% endif %}">
-            <td class="p-2 text-center text-slate-400 border-r border-slate-200">{{ loop.index }}</td>
-            <td class="p-2 font-bold text-purple-700 border-r border-slate-200">{{ p.voucher_code or '-' }}</td>
-            <td class="p-2 text-slate-600 border-r border-slate-200">{{ p.purchase_date or '-' }}</td>
-            <td class="p-2 font-medium text-[#195faa] border-r border-slate-200">{{ p.material_code }}</td>
-            <td class="p-2 font-medium text-slate-800 border-r border-slate-200">{{ p.material_name or p.material_code }}</td>
-            <td class="p-2 text-center text-slate-500 border-r border-slate-200">{{ p.unit or '-' }}</td>
-            <td class="p-2 text-right font-bold border-r border-slate-200">{{ "{:,.0f}".format(p.quantity) if p.quantity else '-' }}</td>
-            <td class="p-2 text-right font-bold text-[#195faa] bg-blue-50/20 border-r border-slate-200">
-              {{ "{:,.0f}".format(p.unit_price) if p.unit_price else '-' }}
+          <tr class="hover:bg-blue-50/40 transition-colors {% if loop.index % 2 == 0 %}bg-slate-50/60{% else %}bg-white{% endif %}">
+            <td class="p-2 border-r border-slate-200 text-center text-slate-500 font-medium">{{ loop.index }}</td>
+            <td class="p-2 border-r border-slate-200 text-center font-bold text-[#195faa] whitespace-nowrap">{{ p.voucher_code or '-' }}</td>
+            <td class="p-2 border-r border-slate-200 text-center text-slate-600 whitespace-nowrap">{{ p.purchase_date or '-' }}</td>
+            <td class="p-2 border-r border-slate-200 font-bold text-slate-700 whitespace-nowrap">{{ p.material_code }}</td>
+            <td class="p-2 border-r border-slate-200 font-semibold text-slate-800">{{ p.material_name or p.material_code }}</td>
+            <td class="p-2 border-r border-slate-200 text-center text-slate-600">{{ p.brand or '-' }}</td>
+            <td class="p-2 border-r border-slate-200 text-center font-medium text-slate-600">{{ p.unit or '-' }}</td>
+            <td class="p-2 border-r border-slate-200 text-right font-bold text-slate-700">
+              {{ "{:,.0f}".format(p.quantity) if p.quantity else '0' }}
             </td>
-            <td class="p-2 text-right font-black text-emerald-800 bg-emerald-50/20 border-r border-slate-200">
-              {{ "{:,.0f}".format(p.total_amount) if p.total_amount else '-' }}
+            <td class="p-2 border-r border-slate-200 text-right font-bold text-[#195faa] bg-blue-50/20">
+              {{ "{:,.0f}".format(p.unit_price) if p.unit_price else '0' }}
             </td>
-            <td class="p-2 text-slate-700 font-medium border-r border-slate-200">{{ p.supplier or '-' }}</td>
-            <td class="p-2 text-slate-500 border-r border-slate-200">{{ p.inspection_record or '-' }}</td>
-            <td class="p-2 text-slate-400 text-[11px]">{{ p.notes or '-' }}</td>
+            <td class="p-2 border-r border-slate-200 text-right font-black text-emerald-800 bg-emerald-50/20">
+              {{ "{:,.0f}".format(p.total_amount) if p.total_amount else '0' }}
+            </td>
+            <td class="p-2 border-r border-slate-200 text-center text-slate-700 font-medium">{{ p.supplier or '-' }}</td>
+            <td class="p-2 border-r border-slate-200 text-center text-slate-600 text-[11px]">{{ p.inspection_record or '-' }}</td>
+            <td class="p-2 border-r border-slate-200 text-slate-500 text-[11px]">{{ p.notes or '-' }}</td>
+            
+            <!-- NÚT MŨI TÊN IMPORT SANG NHẬP KHO -->
+            <td class="p-1.5 text-center whitespace-nowrap">
+              {% if p.is_imported %}
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  <span>✓</span> Đã nhập kho
+                </span>
+              {% else %}
+                <a href="{{ url_for('import_purchase_to_receipt_route', purchase_id=p.id) }}" class="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#195faa] hover:bg-[#124782] text-white font-bold text-[11px] shadow-sm transition-all" title="Bấm mũi tên để import ngay vật tư này sang bảng Nhập kho">
+                  <span>➡️</span> Nhập kho
+                </a>
+              {% endif %}
+            </td>
           </tr>
           {% else %}
           <tr>
-            <td colspan="12" class="p-8 text-center text-slate-400">Chưa có giao dịch mua vào có đơn giá.</td>
+            <td colspan="14" class="p-8 text-center text-slate-400">Không tìm thấy giao dịch mua vào & đơn giá nào khớp với điều kiện lọc.</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+
+    <!-- Pagination Footer -->
+    <div class="bg-slate-50 border-t border-slate-300 px-3 py-1.5 flex items-center justify-between text-xs text-slate-600 flex-shrink-0">
+      <div>Hiển thị <b class="text-slate-800">{{ purchases|length }}</b> giao dịch mua vào & đơn giá</div>
+      <div class="text-[11px] text-slate-500">Mới nhất xếp trên • Đơn vị tiền tệ: VNĐ • Tích hợp nút mũi tên ➡️ đồng bộ tức thời sang Nhập kho</div>
+    </div>
   </div>
 
 </div>
+
+
+<!-- ============================================================================== -->
+<!-- CỬA SỔ MODAL THÊM ĐƠN GIÁ / MUA VÀO (CÓ CỘT SỐ PNK, TỰ TÍNH THÀNH TIỀN) -->
+<!-- ============================================================================== -->
+
+<div id="purchaseModal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-3">
+  <div class="bg-white rounded-xl shadow-2xl border border-slate-300 w-full max-w-6xl max-h-[95vh] flex flex-col overflow-hidden">
+    
+    <!-- Modal Header -->
+    <div class="bg-[#195faa] text-white p-3.5 flex items-center justify-between flex-shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-lg">💰</span>
+        <h3 class="font-bold text-sm">Thêm Mua Vào & Đơn Giá (Số PNK Tiếp Theo: {{ next_pnk }})</h3>
+      </div>
+      <button type="button" onclick="closePurchaseModal()" class="text-white hover:text-blue-200 text-lg font-bold">✕</button>
+    </div>
+
+    <!-- Modal Content Body -->
+    <div class="p-4 overflow-y-auto flex-1 text-xs">
+      <form method="POST" action="{{ url_for('purchases_view') }}" class="space-y-3">
+        
+        <div class="flex items-center justify-between border-b border-slate-200 pb-1.5">
+          <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wide">THÔNG TIN MUA VÀO & HÓA ĐƠN</h4>
+          <span class="text-[11px] text-slate-500">Người lập: <b>{{ current_user.full_name }}</b></span>
+        </div>
+
+        <!-- Thông tin chung của phiếu -->
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Số PNK <span class="text-red-500">*</span></label>
+            <input type="text" name="voucher_code" id="pur_voucher_code" value="{{ next_pnk }}" required class="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#195faa] font-bold text-[#195faa] bg-blue-50/30">
+          </div>
+
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Ngày mua / Hóa đơn <span class="text-red-500">*</span></label>
+            <input type="date" name="purchase_date" id="pur_purchase_date" value="{{ today_str }}" required class="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+          </div>
+
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Nhà Cung Cấp</label>
+            <input type="text" name="supplier" id="pur_supplier" list="suppliersList" placeholder="Bạch Đằng, Sino, Cadisun..." class="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+            <datalist id="suppliersList">
+              {% for s in all_suppliers %}
+                <option value="{{ s }}">
+              {% endfor %}
+            </datalist>
+          </div>
+
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Số Biên Bản Nghiệm Thu (BBNT)</label>
+            <input type="text" name="inspection_record" id="pur_inspection_record" placeholder="BBNT01, BBNT02..." class="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-center">
+          <div class="sm:col-span-2">
+            <label class="block font-semibold text-slate-700 mb-1">Ghi chú phiếu mua / hóa đơn</label>
+            <input type="text" name="notes" placeholder="Số hóa đơn VAT, hợp đồng mua sắm, người giao..." class="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+          </div>
+
+          <!-- TÙY CHỌN TỰ ĐỘNG ĐỒNG BỘ SANG BẢNG NHẬP KHO -->
+          <div class="sm:col-span-1 pt-4">
+            <label class="flex items-center gap-2 cursor-pointer p-2 rounded bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors">
+              <input type="checkbox" name="sync_to_receipt" value="1" checked class="w-4 h-4 text-[#195faa] rounded focus:ring-[#195faa]">
+              <span class="text-xs font-bold text-[#195faa]">➡️ Tự động import sang Nhập kho</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- BẢNG CHI TIẾT VẬT TƯ: CÓ CỘT STT, TÌM KIẾM 2 CHIỀU, TỰ TÍNH THÀNH TIỀN -->
+        <div class="border border-slate-300 rounded overflow-hidden mt-2">
+          <div class="bg-slate-100 p-2 font-bold text-xs text-slate-700 border-b border-slate-300 flex items-center justify-between">
+            <span>DANH SÁCH VẬT TƯ MUA VÀO & ĐƠN GIÁ</span>
+            <span class="text-[11px] font-normal text-slate-500">💡 Gõ tìm kiếm theo <b>Tên chi tiết</b> hoặc <b>Mã VT</b> • Hệ thống tự tính <b>Thành Tiền = SL × Đơn Giá</b></span>
+          </div>
+
+          <div class="overflow-x-auto max-h-[50vh] overflow-y-auto">
+            <table class="w-full text-xs text-left border-collapse min-w-[950px]">
+              <thead class="bg-slate-50 border-b border-slate-300 text-slate-600 font-semibold sticky top-0 z-10">
+                <tr>
+                  <th class="p-2 w-12 border-r border-slate-200 text-center bg-slate-50">STT</th>
+                  <th class="p-2 w-44 border-r border-slate-200">Mã Vật Tư <span class="text-red-500">*</span></th>
+                  <th class="p-2 border-r border-slate-200 min-w-[260px]">Tên Chi Tiết Vật Tư (Gõ tìm) <span class="text-red-500">*</span></th>
+                  <th class="p-2 w-28 border-r border-slate-200 text-center">Hãng</th>
+                  <th class="p-2 w-16 text-center border-r border-slate-200">ĐVT</th>
+                  <th class="p-2 w-28 text-right border-r border-slate-200 text-slate-700">Số Lượng <span class="text-red-500">*</span></th>
+                  <th class="p-2 w-32 text-right border-r border-slate-200 text-[#195faa]">Đơn Giá (VNĐ) <span class="text-red-500">*</span></th>
+                  <th class="p-2 w-36 text-right border-r border-slate-200 text-emerald-800">Thành Tiền (VNĐ)</th>
+                  <th class="p-2 w-12 text-center">Xóa</th>
+                </tr>
+              </thead>
+              <tbody id="purchaseItemsTableBody" class="divide-y divide-slate-200">
+                <tr>
+                  <!-- Cột STT -->
+                  <td class="p-1.5 border-r border-slate-200 text-center font-bold text-slate-500 row-stt">1</td>
+
+                  <!-- Ô Mã VT -->
+                  <td class="p-1.5 border-r border-slate-200">
+                    <input type="text" name="material_code[]" list="materialsCodeList" oninput="onCodeInput(this)" placeholder="Gõ/chọn mã..." required class="mat-code-input w-full px-2 py-1 rounded border border-slate-300 font-bold text-[#195faa] focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+                  </td>
+
+                  <!-- Ô Tên VT (Hỗ trợ tìm kiếm theo tên chi tiết) -->
+                  <td class="p-1.5 border-r border-slate-200">
+                    <input type="text" name="material_name_input[]" list="materialsNameList" oninput="onNameInput(this)" placeholder="Gõ tên vật tư cần tìm..." class="mat-name-input w-full px-2 py-1 rounded border border-slate-300 font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+                  </td>
+
+                  <!-- Hãng (Căn giữa ô) -->
+                  <td class="p-1.5 border-r border-slate-200 text-center text-slate-600">
+                    <span class="mat-brand text-slate-600">-</span>
+                  </td>
+
+                  <!-- ĐVT -->
+                  <td class="p-1.5 border-r border-slate-200 text-center font-semibold text-slate-600">
+                    <span class="mat-unit">-</span>
+                  </td>
+
+                  <!-- Số Lượng -->
+                  <td class="p-1.5 border-r border-slate-200 text-right">
+                    <input type="number" step="1" name="quantity[]" value="100" oninput="calculateRowTotal(this)" required class="pur-qty-input w-full px-2 py-1 text-right rounded border border-slate-300 font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+                  </td>
+
+                  <!-- Đơn Giá -->
+                  <td class="p-1.5 border-r border-slate-200 text-right">
+                    <input type="number" step="1" name="unit_price[]" value="25000" oninput="calculateRowTotal(this)" required class="pur-price-input w-full px-2 py-1 text-right rounded border border-slate-300 font-bold text-[#195faa] focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+                  </td>
+
+                  <!-- Thành Tiền -->
+                  <td class="p-1.5 border-r border-slate-200 text-right font-black text-emerald-800 bg-emerald-50/20">
+                    <span class="pur-total-text">2,500,000</span>
+                  </td>
+
+                  <!-- Xóa dòng -->
+                  <td class="p-1.5 text-center">
+                    <button type="button" onclick="removePurchaseRow(this)" class="text-slate-400 hover:text-red-600 font-bold text-sm">✕</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Buttons Footer of Form -->
+        <div class="flex items-center justify-between pt-2 border-t border-slate-200">
+          <button type="button" onclick="addNewPurchaseRow()" class="px-3 py-1.5 rounded border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold text-xs flex items-center gap-1 transition-colors">
+            <span>+</span> Thêm Dòng Vật Tư
+          </button>
+
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="closePurchaseModal()" class="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-100 text-slate-700 font-medium">Hủy</button>
+            <button type="submit" class="px-4 py-1.5 rounded bg-[#195faa] hover:bg-[#124782] text-white font-bold text-xs shadow transition-colors flex items-center gap-1.5">
+              <span>💾</span> LƯU MUA VÀO & ĐƠN GIÁ (SỐ PNK {{ next_pnk }})
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- Datalists hỗ trợ Autocomplete 2 chiều cho Mã VT và Tên VT -->
+<datalist id="materialsCodeList">
+  {% for m in materials %}
+    <option value="{{ m.code }}">{{ m.name }} ({{ m.brand or '-' }})</option>
+  {% endfor %}
+</datalist>
+
+<datalist id="materialsNameList">
+  {% for m in materials %}
+    <option value="{{ m.name }} (Mã: {{ m.code }})"></option>
+  {% endfor %}
+</datalist>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+  // Dữ liệu danh mục vật tư phục vụ Autocomplete 2 chiều
+  const materialsData = [
+    {% for m in materials %}
+    {
+      code: {{ m.code | tojson }},
+      name: {{ m.name | tojson }},
+      brand: {{ (m.brand or '') | tojson }},
+      unit: {{ (m.unit or '') | tojson }}
+    },
+    {% endfor %}
+  ];
+
+  // Bản đồ tra cứu theo Code và theo Name
+  const byCodeMap = {};
+  const byNameMap = {};
+  materialsData.forEach(m => {
+    byCodeMap[m.code.toLowerCase()] = m;
+    byNameMap[m.name.toLowerCase()] = m;
+  });
+
+  // Modal Open/Close Controls
+  function openPurchaseModal() {
+    document.getElementById('purchaseModal').classList.remove('hidden');
+  }
+
+  function closePurchaseModal() {
+    document.getElementById('purchaseModal').classList.add('hidden');
+  }
+
+  // Khi người dùng gõ / chọn Mã VT -> tự động điền Tên chi tiết, Hãng, ĐVT
+  function onCodeInput(input) {
+    const val = input.value.trim().toLowerCase();
+    const row = input.closest('tr');
+    const nameInput = row.querySelector('.mat-name-input');
+    const brandSpan = row.querySelector('.mat-brand');
+    const unitSpan = row.querySelector('.mat-unit');
+
+    if (!val) return;
+
+    if (byCodeMap[val]) {
+      const m = byCodeMap[val];
+      nameInput.value = m.name;
+      brandSpan.textContent = m.brand || '-';
+      unitSpan.textContent = m.unit;
+    }
+  }
+
+  // Khi người dùng gõ / chọn Tên VT -> tự động tìm kiếm gợi ý và điền ngược lại Mã, Hãng, ĐVT
+  function onNameInput(input) {
+    const val = input.value.trim().toLowerCase();
+    const row = input.closest('tr');
+    const codeInput = row.querySelector('.mat-code-input');
+    const brandSpan = row.querySelector('.mat-brand');
+    const unitSpan = row.querySelector('.mat-unit');
+
+    if (!val) return;
+
+    // 1. Khớp chính xác tên
+    if (byNameMap[val]) {
+      const m = byNameMap[val];
+      codeInput.value = m.code;
+      brandSpan.textContent = m.brand || '-';
+      unitSpan.textContent = m.unit;
+      return;
+    }
+
+    // 2. Nếu chuỗi có dạng "Tên (Mã: xxx)" từ datalist
+    const codeInBracketMatch = input.value.match(/\(Mã:\s*([^)]+)\)/i);
+    if (codeInBracketMatch && codeInBracketMatch[1]) {
+      const extractedCode = codeInBracketMatch[1].trim().toLowerCase();
+      if (byCodeMap[extractedCode]) {
+        const m = byCodeMap[extractedCode];
+        codeInput.value = m.code;
+        input.value = m.name;
+        brandSpan.textContent = m.brand || '-';
+        unitSpan.textContent = m.unit;
+        return;
+      }
+    }
+
+    // 3. Khớp tương đối theo tên chứa từ khóa
+    const found = materialsData.find(m => m.name.toLowerCase() === val || (val.length >= 3 && m.name.toLowerCase().startsWith(val)));
+    if (found) {
+      codeInput.value = found.code;
+      brandSpan.textContent = found.brand || '-';
+      unitSpan.textContent = found.unit;
+    }
+  }
+
+  // Tính toán Thành Tiền = Số Lượng × Đơn Giá
+  function calculateRowTotal(input) {
+    const row = input.closest('tr');
+    const qty = Math.round(parseFloat(row.querySelector('.pur-qty-input').value) || 0);
+    const price = Math.round(parseFloat(row.querySelector('.pur-price-input').value) || 0);
+    const total = qty * price;
+    row.querySelector('.pur-total-text').textContent = total.toLocaleString();
+  }
+
+  // Cập nhật số thứ tự (STT) tự động
+  function updateRowSTT() {
+    const rows = document.querySelectorAll('#purchaseItemsTableBody tr');
+    rows.forEach((row, idx) => {
+      const sttCell = row.querySelector('.row-stt');
+      if (sttCell) sttCell.textContent = idx + 1;
+    });
+  }
+
+  // Xóa 1 dòng vật tư khỏi bảng
+  function removePurchaseRow(btn) {
+    const tbody = document.getElementById('purchaseItemsTableBody');
+    if (tbody.querySelectorAll('tr').length > 1) {
+      btn.closest('tr').remove();
+      updateRowSTT();
+    } else {
+      alert("Phiếu mua vào phải có ít nhất 1 dòng vật tư.");
+    }
+  }
+
+  // Thêm 1 dòng vật tư mới
+  function addNewPurchaseRow(code = '', name = '', brand = '', unit = '', qty = 100, price = 0) {
+    const tbody = document.getElementById('purchaseItemsTableBody');
+    const tr = document.createElement('tr');
+    const total = Math.round(qty * price);
+    tr.innerHTML = `
+      <td class="p-1.5 border-r border-slate-200 text-center font-bold text-slate-500 row-stt"></td>
+      <td class="p-1.5 border-r border-slate-200">
+        <input type="text" name="material_code[]" value="${code}" list="materialsCodeList" oninput="onCodeInput(this)" placeholder="Gõ/chọn mã..." required class="mat-code-input w-full px-2 py-1 rounded border border-slate-300 font-bold text-[#195faa] focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+      </td>
+      <td class="p-1.5 border-r border-slate-200">
+        <input type="text" name="material_name_input[]" value="${name}" list="materialsNameList" oninput="onNameInput(this)" placeholder="Gõ tên vật tư cần tìm..." class="mat-name-input w-full px-2 py-1 rounded border border-slate-300 font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+      </td>
+      <td class="p-1.5 border-r border-slate-200 text-center text-slate-600">
+        <span class="mat-brand text-slate-600">${brand || '-'}</span>
+      </td>
+      <td class="p-1.5 border-r border-slate-200 text-center font-semibold text-slate-600">
+        <span class="mat-unit">${unit || '-'}</span>
+      </td>
+      <td class="p-1.5 border-r border-slate-200 text-right">
+        <input type="number" step="1" name="quantity[]" value="${Math.round(qty)}" oninput="calculateRowTotal(this)" required class="pur-qty-input w-full px-2 py-1 text-right rounded border border-slate-300 font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+      </td>
+      <td class="p-1.5 border-r border-slate-200 text-right">
+        <input type="number" step="1" name="unit_price[]" value="${Math.round(price)}" oninput="calculateRowTotal(this)" required class="pur-price-input w-full px-2 py-1 text-right rounded border border-slate-300 font-bold text-[#195faa] focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+      </td>
+      <td class="p-1.5 border-r border-slate-200 text-right font-black text-emerald-800 bg-emerald-50/20">
+        <span class="pur-total-text">${total.toLocaleString()}</span>
+      </td>
+      <td class="p-1.5 text-center">
+        <button type="button" onclick="removePurchaseRow(this)" class="text-slate-400 hover:text-red-600 font-bold text-sm">✕</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+    updateRowSTT();
+  }
+</script>
 {% endblock %}

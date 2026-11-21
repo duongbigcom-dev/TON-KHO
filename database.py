@@ -623,8 +623,8 @@ def get_material_detail_with_history(material_code: str) -> Dict[str, Any]:
 
 
 def add_receipt_entry(voucher_code: str, voucher_date: str, material_code: str,
-                      quantity: float, supplier: str, request_code: str,
-                      notes: str, created_by: str) -> bool:
+                      quantity: float, supplier: str = "", request_code: str = "",
+                      notes: str = "", created_by: str = "Hệ thống") -> bool:
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -863,3 +863,181 @@ def create_or_update_user(username: str, password_raw: str, full_name: str, role
     except Exception as exc:
         logger.error(f"Lỗi khi tạo người dùng {username}: {exc}", exc_info=True)
         return False
+
+
+# ==============================================================================
+# HÀM XỬ LÝ PHÂN HỆ MUA VÀO & ĐƠN GIÁ (ĐỒNG BỘ SANG NHẬP KHO)
+# ==============================================================================
+
+def get_all_purchases(
+    search_query: Optional[str] = None,
+    supplier_filter: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Lấy danh sách các giao dịch mua vào & đơn giá, kết hợp thông tin vật tư và trạng thái đã import sang bảng Nhập kho.
+    """
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            query = """
+                SELECT 
+                    p.id,
+                    p.voucher_code,
+                    p.purchase_date,
+                    p.material_code,
+                    COALESCE(m.name, p.material_code) AS material_name,
+                    m.brand,
+                    m.unit,
+                    ROUND(p.quantity) AS quantity,
+                    ROUND(p.unit_price) AS unit_price,
+                    ROUND(p.total_amount) AS total_amount,
+                    p.supplier,
+                    p.inspection_record,
+                    p.notes,
+                    CASE 
+                        WHEN r.id IS NOT NULL THEN 1 
+                        ELSE 0 
+                    END AS is_imported
+                FROM purchases p
+                LEFT JOIN materials m ON p.material_code = m.code
+                LEFT JOIN receipts r ON p.voucher_code = r.voucher_code AND p.material_code = r.material_code
+                WHERE 1=1
+            """
+            params = []
+
+            if from_date:
+                query += " AND p.purchase_date >= ?"
+                params.append(from_date)
+
+            if to_date:
+                query += " AND p.purchase_date <= ?"
+                params.append(to_date)
+
+            if supplier_filter:
+                query += " AND p.supplier = ?"
+                params.append(supplier_filter)
+
+            if search_query:
+                like_str = f"%{search_query.strip()}%"
+                query += """ AND (
+                    p.voucher_code LIKE ? OR
+                    p.material_code LIKE ? OR
+                    m.name LIKE ? OR
+                    p.supplier LIKE ? OR
+                    p.inspection_record LIKE ? OR
+                    p.notes LIKE ?
+                )"""
+                params.extend([like_str, like_str, like_str, like_str, like_str, like_str])
+
+            query += " ORDER BY p.id DESC;"
+            cursor.execute(query, params)
+            return [dict(row) for row in cursor.fetchall()]
+    except Exception as exc:
+        logger.error(f"Lỗi khi lấy danh sách mua vào: {exc}", exc_info=True)
+        return []
+
+
+def add_purchase_entry(
+    voucher_code: str,
+    purchase_date: str,
+    material_code: str,
+    quantity: float,
+    unit_price: float,
+    supplier: str = "",
+    inspection_record: str = "",
+    notes: str = "",
+    sync_to_receipt: bool = False,
+    created_by: str = "Kế toán"
+) -> bool:
+    """
+    Thêm mới một dòng giao dịch mua vào & đơn giá.
+    Nếu sync_to_receipt = True, tự động đồng bộ sang bảng Nhập kho (receipts).
+    """
+    try:
+        qty_val = round(quantity)
+        price_val = round(unit_price)
+        total_amount = qty_val * price_val
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO purchases (
+                    voucher_code, purchase_date, material_code, quantity, 
+                    unit_price, total_amount, supplier, inspection_record, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """, (
+                voucher_code.strip(),
+                purchase_date.strip(),
+                material_code.strip(),
+                qty_val,
+                price_val,
+                total_amount,
+                supplier.strip() if supplier else "",
+                inspection_record.strip() if inspection_record else "",
+                notes.strip() if notes else ""
+            ))
+            conn.commit()
+
+        if sync_to_receipt and voucher_code and material_code and qty_val > 0:
+            add_receipt_entry(
+                voucher_code=voucher_code,
+                voucher_date=purchase_date,
+                material_code=material_code,
+                quantity=qty_val,
+                supplier=supplier,
+                notes=f"Đồng bộ từ mua hàng. {notes}".strip(),
+                created_by=created_by
+            )
+
+        return True
+    except Exception as exc:
+        logger.error(f"Lỗi khi thêm giao dịch mua vào: {exc}", exc_info=True)
+        return False
+
+
+def import_purchase_to_receipt(purchase_id: int, created_by: str = "Kế toán") -> Tuple[bool, str]:
+    """
+    Thực hiện hành động bấm mũi tên: Đẩy 1 dòng vật tư từ bảng Mua vào & Đơn giá sang bảng Nhập kho (receipts).
+    Kiểm tra nếu đã tồn tại số PNK và mã VT tương ứng thì không tạo trùng lặp.
+    """
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM purchases WHERE id = ?;", (purchase_id,))
+            row = cursor.fetchone()
+            if not row:
+                return False, "Không tìm thấy dữ liệu mua vào này."
+
+            p = dict(row)
+            voucher_code = p.get("voucher_code", "").strip() or "GM01"
+            material_code = p.get("material_code", "").strip()
+            qty = round(p.get("quantity", 0))
+
+            if not material_code or qty <= 0:
+                return False, "Dữ liệu mua vào không hợp lệ (thiếu mã VT hoặc số lượng <= 0)."
+
+            # Kiểm tra xem đã có trong bảng receipts chưa
+            cursor.execute("""
+                SELECT id FROM receipts 
+                WHERE voucher_code = ? AND material_code = ?;
+            """, (voucher_code, material_code))
+            existing = cursor.fetchone()
+            if existing:
+                return True, f"Mã '{material_code}' đã tồn tại trong Phiếu nhập kho '{voucher_code}'."
+
+            # Tiến hành nạp vào bảng receipts
+            import datetime
+            add_receipt_entry(
+                voucher_code=voucher_code,
+                voucher_date=p.get("purchase_date") or datetime.date.today().strftime("%Y-%m-%d"),
+                material_code=material_code,
+                quantity=qty,
+                supplier=p.get("supplier") or "",
+                notes=f"Import từ Mua vào #{p['id']}. {p.get('notes') or ''}".strip(),
+                created_by=created_by
+            )
+            return True, f"Đã đẩy thành công vật tư '{material_code}' (SL: {qty:,.0f}) sang Phiếu nhập kho '{voucher_code}'!"
+    except Exception as exc:
+        logger.error(f"Lỗi khi import mua vào sang nhập kho: {exc}", exc_info=True)
+        return False, f"Lỗi hệ thống: {str(exc)}"
