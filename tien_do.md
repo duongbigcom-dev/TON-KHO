@@ -53,6 +53,11 @@
   - **Quản lý Tổ đội nhận động**:
     + Nút `[ ⚙️ Quản lý Tổ đội ]` cho phép thêm mới và xóa bớt các tổ đội nhận vật tư theo nhu cầu thực tế ngoài công trường.
     + Khi thêm/xóa tổ đội, hệ thống lập tức cập nhật dữ liệu vào cơ sở dữ liệu và đồng bộ trực tiếp lên danh sách chọn, bộ lọc và các cột tổ đội của bảng Tổng hợp tồn kho mà không cần sửa code.
+- [x] **Đẩy mã nguồn lên kho lưu trữ GitHub**:
+  - Khởi tạo Git repository nhánh `main`.
+  - Tạo cấu hình [.gitignore](file:///e:/TON%20KHO/.gitignore) loại trừ file rác, file tạm thời.
+  - Đóng gói toàn bộ mã nguồn, cấu hình, giao diện, tài liệu và CSDL khởi tạo `vattu_donghoa.db`.
+  - Kết nối và đẩy (push) thành công 100% lên GitHub Repository: [https://github.com/duongbigcom-dev/TON-KHO](https://github.com/duongbigcom-dev/TON-KHO).
 - [x] **Kiểm thử tự động (`test_app.py`)**: Toàn bộ 25/25 bài test tích hợp đều đạt tỷ lệ thành công 100%.
 
 ---
