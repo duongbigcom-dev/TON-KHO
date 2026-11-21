@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}Đối Soát Công Trường ⇄ Kế Toán - QUẢN LÝ TỒN KHO BIGCOM{% endblock %}
+
+{% block content %}
+<div class="flex-1 flex flex-col h-full space-y-2 overflow-hidden">
+
+  <!-- Header Tiêu Đề -->
+  <div class="flex items-center justify-between flex-shrink-0">
+    <div class="flex items-center gap-2">
+      <h1 class="text-base font-bold text-slate-800">
+        Kho <span class="text-slate-400">/</span> <span class="text-[#195faa]">Đối Soát Số Liệu: Công Trường ⇄ Kế Toán Văn Phòng</span>
+      </h1>
+      <span class="text-xs font-semibold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded">Thời Gian Thực</span>
+    </div>
+    <span class="text-xs text-slate-500">Đối chiếu 2 chiều tự động (Làm tròn số nguyên)</span>
+  </div>
+
+  <!-- Bảng Đối Soát Chi Tiết Kéo Trượt -->
+  <div class="flex-1 bg-white rounded border border-slate-300 shadow-sm overflow-hidden flex flex-col">
+    <div class="flex-1 overflow-x-auto overflow-y-auto">
+      <table class="w-full text-xs text-left border-collapse min-w-[950px]">
+        <thead class="sticky top-0 bg-slate-100 text-slate-700 z-10 border-b border-slate-300 font-bold select-none shadow-sm">
+          <tr>
+            <th class="p-2 border-r border-slate-300 text-center w-12" rowspan="2">STT</th>
+            <th class="p-2 border-r border-slate-300 w-28" rowspan="2">Mã VT</th>
+            <th class="p-2 border-r border-slate-300" rowspan="2">Tên Danh Mục Vật Tư</th>
+            <th class="p-2 border-r border-slate-300 text-center w-16" rowspan="2">ĐVT</th>
+            <th class="p-1.5 text-center bg-blue-50/70 text-[#195faa] border-r border-slate-300" colspan="3">ĐỐI SOÁT NHẬP KHO</th>
+            <th class="p-1.5 text-center bg-amber-50/70 text-amber-900 border-r border-slate-300" colspan="3">ĐỐI SOÁT XUẤT KHO</th>
+            <th class="p-2 text-center w-28" rowspan="2">Trạng Thái</th>
+          </tr>
+          <tr class="bg-slate-50 text-slate-600 border-b border-slate-300 text-[11px]">
+            <th class="p-1.5 text-right bg-blue-50/40 border-r border-slate-200">Công Trường</th>
+            <th class="p-1.5 text-right bg-blue-50/40 border-r border-slate-200">Kế Toán</th>
+            <th class="p-1.5 text-center bg-blue-100/60 font-bold border-r border-slate-300">Lệch</th>
+            <th class="p-1.5 text-right bg-amber-50/40 border-r border-slate-200">Công Trường</th>
+            <th class="p-1.5 text-right bg-amber-50/40 border-r border-slate-200">Kế Toán</th>
+            <th class="p-1.5 text-center bg-amber-100/60 font-bold border-r border-slate-300">Lệch</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-200">
+          {% for row in items %}
+          <tr class="hover:bg-blue-50/40 transition-colors {% if loop.index % 2 == 0 %}bg-slate-50/50{% else %}bg-white{% endif %}">
+            <td class="p-2 text-center text-slate-400 border-r border-slate-200">{{ loop.index }}</td>
+            <td class="p-2 font-bold text-[#195faa] border-r border-slate-200">{{ row.code }}</td>
+            <td class="p-2 font-medium text-slate-800 border-r border-slate-200">{{ row.name }}</td>
+            <td class="p-2 text-center text-slate-600 border-r border-slate-200">{{ row.unit }}</td>
+
+            <!-- Nhập kho đối soát (Làm tròn số nguyên) -->
+            <td class="p-2 text-right font-bold text-emerald-700 bg-blue-50/20 border-r border-slate-200">
+              {{ "{:,.0f}".format(row.site_import_qty) }}
+            </td>
+            <td class="p-2 text-right text-slate-600 bg-blue-50/20 border-r border-slate-200">
+              {{ "{:,.0f}".format(row.office_purchase_qty) if row.office_purchase_qty else '-' }}
+            </td>
+            <td class="p-2 text-center font-bold border-r border-slate-300 {% if row.diff_import != 0 %}text-red-600 bg-red-100{% else %}text-emerald-700{% endif %}">
+              {{ "{:,.0f}".format(row.diff_import) }}
+            </td>
+
+            <!-- Xuất kho đối soát (Làm tròn số nguyên) -->
+            <td class="p-2 text-right font-bold text-amber-700 bg-amber-50/20 border-r border-slate-200">
+              {{ "{:,.0f}".format(row.site_export_qty) }}
+            </td>
+            <td class="p-2 text-right text-slate-600 bg-amber-50/20 border-r border-slate-200">
+              {{ "{:,.0f}".format(row.office_export_qty) }}
+            </td>
+            <td class="p-2 text-center font-bold border-r border-slate-300 {% if row.diff_export != 0 %}text-red-600 bg-red-100{% else %}text-emerald-700{% endif %}">
+              {{ "{:,.0f}".format(row.diff_export) }}
+            </td>
+
+            <!-- Trạng thái -->
+            <td class="p-2 text-center">
+              {% if row.diff_import == 0 and row.diff_export == 0 %}
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">Khớp 100%</span>
+              {% else %}
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800">Lệch số</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="11" class="p-8 text-center text-slate-400">Chưa có giao dịch phát sinh để đối soát.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Footer Status -->
+    <div class="bg-slate-50 border-t border-slate-300 px-3 py-1.5 flex items-center justify-between text-xs text-slate-500">
+      <div>Tổng cộng: <b class="text-slate-800">{{ items|length }}</b> vật tư có giao dịch phát sinh</div>
+      <div class="text-emerald-700 font-semibold">Tất cả số liệu đều được đồng bộ tự động từ CSDL SQLite</div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

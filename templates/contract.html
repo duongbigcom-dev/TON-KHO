@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Hợp Đồng BOQ - QUẢN LÝ TỒN KHO BIGCOM{% endblock %}
+
+{% block content %}
+<div class="flex-1 flex flex-col h-full space-y-2 overflow-hidden">
+
+  <!-- Header Tiêu Đề -->
+  <div class="flex items-center justify-between flex-shrink-0">
+    <div class="flex items-center gap-2">
+      <h1 class="text-base font-bold text-slate-800">
+        Hợp Đồng <span class="text-slate-400">/</span> <span class="text-[#195faa]">Định Mức Khối Lượng Hợp Đồng CĐT (BOQ)</span>
+      </h1>
+      <span class="text-xs font-semibold px-2 py-0.5 bg-blue-100 text-[#195faa] rounded">Dự Án Đồng Hòa</span>
+    </div>
+    <span class="text-xs text-slate-500">Mốc đối chiếu chống vượt dự toán (Số làm tròn)</span>
+  </div>
+
+  <!-- Bảng Hợp Đồng Kéo Trượt -->
+  <div class="flex-1 bg-white rounded border border-slate-300 shadow-sm overflow-hidden flex flex-col">
+    <div class="flex-1 overflow-x-auto overflow-y-auto">
+      <table class="w-full text-xs text-left border-collapse min-w-[850px]">
+        <thead class="sticky top-0 bg-slate-100 text-slate-700 z-10 border-b border-slate-300 font-bold select-none shadow-sm">
+          <tr>
+            <th class="p-2 border-r border-slate-300 text-center w-12">STT</th>
+            <th class="p-2 border-r border-slate-300 w-32">Mã Vật Tư</th>
+            <th class="p-2 border-r border-slate-300">Nội Dung Công Việc / Vật Tư Theo HĐ</th>
+            <th class="p-2 border-r border-slate-300 w-32">Hãng</th>
+            <th class="p-2 border-r border-slate-300 text-center w-16">ĐVT</th>
+            <th class="p-2 border-r border-slate-300 text-right w-36 bg-blue-50 text-[#195faa] font-bold">Khối Lượng HĐ (BOQ)</th>
+            <th class="p-2 border-r border-slate-300 text-right w-36 text-slate-600">SL Yêu Cầu (Lũy Kế)</th>
+            <th class="p-2">Ghi Chú</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-200">
+          {% for m in materials %}
+          <tr class="hover:bg-blue-50/40 transition-colors {% if loop.index % 2 == 0 %}bg-slate-50/50{% else %}bg-white{% endif %}">
+            <td class="p-2 text-center text-slate-400 border-r border-slate-200">{{ loop.index }}</td>
+            <td class="p-2 font-bold text-[#195faa] border-r border-slate-200">{{ m.code }}</td>
+            <td class="p-2 font-medium text-slate-800 border-r border-slate-200">{{ m.name }}</td>
+            <td class="p-2 text-slate-600 border-r border-slate-200">{{ m.brand or '-' }}</td>
+            <td class="p-2 text-center text-slate-600 border-r border-slate-200 font-medium">{{ m.unit }}</td>
+            <!-- Làm tròn không số thập phân -->
+            <td class="p-2 text-right font-bold text-[#195faa] bg-blue-50/20 border-r border-slate-200">
+              {{ "{:,.0f}".format(m.contract_qty) if m.contract_qty else '0' }}
+            </td>
+            <td class="p-2 text-right text-slate-600 border-r border-slate-200">
+              {{ "{:,.0f}".format(m.requested_qty) if m.requested_qty else '0' }}
+            </td>
+            <td class="p-2 text-slate-400 text-[11px]">{{ m.notes or '-' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="bg-slate-50 border-t border-slate-300 px-3 py-1.5 flex items-center justify-between text-xs text-slate-500">
+      <div>Tổng cộng: <b class="text-slate-800">{{ materials|length }}</b> danh mục theo hợp đồng</div>
+      <div class="text-[#195faa] font-semibold">QUẢN LÝ TỒN KHO BIGCOM</div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}{{ app_title }}{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Đồng bộ duy nhất 1 font chữ công sở hiện đại cho toàn bộ hệ thống */
+    * {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+    }
+
+    /* Thanh cuộn tinh tế kiểu ERP */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f8fafc; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    
+    /* Màu xanh M&E contractor Bigcom: #195faa */
+    .bg-bigcom-blue {
+      background-color: #195faa !important;
+    }
+    .bg-bigcom-blue-dark {
+      background-color: #124782 !important;
+    }
+    .bg-bigcom-blue-hover:hover {
+      background-color: #165394 !important;
+    }
+    .sidebar-item-active {
+      background-color: #124782 !important;
+      border-left: 4px solid #ffffff;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 h-screen flex flex-col text-xs overflow-hidden select-none">
+
+  {% if current_user %}
+  <!-- Layout 2 cột: Sidebar trái cố định + Khối làm việc phải -->
+  <div class="flex flex-1 h-screen overflow-hidden">
+
+    <!-- 1. LEFT SIDEBAR (THANH CÔNG CỤ BÊN TRÁI MÀU XANH M&E CONTRACTOR #195faa) -->
+    <aside class="w-56 bg-[#195faa] text-white flex flex-col flex-shrink-0 shadow-lg z-20">
+      
+      <!-- Logo Bigcom ME -->
+      <div class="p-3 bg-white border-b border-slate-200 flex items-center justify-center">
+        <a href="{{ url_for('dashboard_view') }}" class="block">
+          <img src="{{ url_for('static', filename='images/logo_bigcom.png') }}" alt="BIGCOM M&E" class="h-9 w-auto object-contain mx-auto">
+        </a>
+      </div>
+
+      <!-- App Subtitle -->
+      <div class="px-3 py-2 bg-[#124782] text-center border-b border-blue-900/40">
+        <div class="font-bold text-[11px] tracking-wide uppercase text-white/95">QUẢN LÝ TỒN KHO BIGCOM</div>
+      </div>
+
+      <!-- Navigation Menu -->
+      <nav class="flex-1 py-2 overflow-y-auto space-y-0.5 text-xs">
+        <a href="{{ url_for('dashboard_view') }}" class="flex items-center gap-2.5 px-3.5 py-2.5 text-white/90 hover:bg-[#165394] transition-colors {% if request.endpoint == 'dashboard_view' and not request.args.get('tab') %}sidebar-item-active{% endif %}">
+          <span class="text-base">📊</span>
+          <span>Tổng quan</span>
+        </a>
+
+        <!-- Menu Kho (Active Parent) -->
+        <div class="space-y-0.5">
+          <div class="flex items-center justify-between px-3.5 py-2 text-white font-bold bg-[#124782] text-[11px] uppercase tracking-wider">
+            <span class="flex items-center gap-2">
+              <span class="text-sm">🏢</span> Phân Hệ Kho
+            </span>
+            <span class="text-[10px]">▼</span>
+          </div>
+
+          <a href="{{ url_for('dashboard_view') }}" class="flex items-center gap-2.5 pl-7 pr-3 py-2 text-white/90 hover:bg-[#124782] transition-colors {% if request.endpoint == 'dashboard_view' %}sidebar-item-active{% endif %}">
+            <span>•</span> Bảng tổng hợp tồn kho
+          </a>
+
+          {% if can_edit %}
+          <a href="{{ url_for('import_stock_view') }}" class="flex items-center gap-2.5 pl-7 pr-3 py-2 text-white/90 hover:bg-[#124782] transition-colors {% if request.endpoint == 'import_stock_view' %}sidebar-item-active{% endif %}">
+            <span>•</span> Nhập kho
+          </a>
+
+          <a href="{{ url_for('export_stock_view') }}" class="flex items-center gap-2.5 pl-7 pr-3 py-2 text-white/90 hover:bg-[#124782] transition-colors {% if request.endpoint == 'export_stock_view' %}sidebar-item-active{% endif %}">
+            <span>•</span> Xuất kho
+          </a>
+          {% endif %}
+
+          <a href="{{ url_for('reconciliation_view') }}" class="flex items-center gap-2.5 pl-7 pr-3 py-2 text-white/90 hover:bg-[#124782] transition-colors {% if request.endpoint == 'reconciliation_view' %}sidebar-item-active{% endif %}">
+            <span>•</span> Đối soát Công trường - KT
+          </a>
+
+          <a href="{{ url_for('reconciliation_cdt_view') }}" class="flex items-center gap-2.5 pl-7 pr-3 py-2 text-white/90 hover:bg-[#124782] transition-colors {% if request.endpoint == 'reconciliation_cdt_view' %}sidebar-item-active{% endif %}">
+            <span>•</span> Đối soát CĐT / Thầu chính (ĐNVT)
+          </a>
+        </div>
+
+        {% if is_office_or_admin %}
+        <a href="{{ url_for('purchases_view') }}" class="flex items-center gap-2.5 px-3.5 py-2.5 text-white/90 hover:bg-[#165394] transition-colors {% if request.endpoint == 'purchases_view' %}sidebar-item-active{% endif %}">
+          <span class="text-base">🛒</span>
+          <span>Mua hàng & Đơn giá</span>
+        </a>
+        {% endif %}
+
+        <a href="{{ url_for('contract_view') }}" class="flex items-center gap-2.5 px-3.5 py-2.5 text-white/90 hover:bg-[#165394] transition-colors {% if request.endpoint == 'contract_view' %}sidebar-item-active{% endif %}">
+          <span class="text-base">📑</span>
+          <span>Hợp đồng BOQ (CĐT)</span>
+        </a>
+
+        <a href="{{ url_for('export_excel_report') }}" class="flex items-center gap-2.5 px-3.5 py-2.5 text-white/90 hover:bg-[#165394] transition-colors">
+          <span class="text-base">📥</span>
+          <span>Xuất Báo cáo Excel</span>
+        </a>
+
+        <div class="pt-3 px-3.5 text-[10px] uppercase font-bold text-white/50 tracking-wider">Hệ thống</div>
+
+        <a href="javascript:void(0)" onclick="alert('Phân quyền hiện tại: ' + '{{ current_user.role }}' + ' - Bạn có đầy đủ quyền thao tác theo phân quyền.')" class="flex items-center gap-2.5 px-3.5 py-2 text-white/80 hover:bg-[#165394] transition-colors">
+          <span class="text-base">⚙️</span>
+          <span>Thiết lập hệ thống</span>
+        </a>
+
+        <a href="javascript:void(0)" onclick="alert('QUẢN LÝ TỒN KHO BIGCOM - Phiên bản R31.0\nHỗ trợ kết nối văn phòng và công trường qua Cloudflare Tunnel.')" class="flex items-center gap-2.5 px-3.5 py-2 text-white/80 hover:bg-[#165394] transition-colors">
+          <span class="text-base">❓</span>
+          <span>Trợ giúp</span>
+        </a>
+      </nav>
+
+      <!-- User footer in sidebar -->
+      <div class="p-2.5 bg-[#0f3b6d] border-t border-blue-900/50 flex items-center justify-between text-white text-[11px]">
+        <div class="truncate">
+          <div class="font-bold truncate">{{ current_user.full_name }}</div>
+          <div class="text-[10px] text-blue-200">
+            {% if current_user.role == 'admin' %}Quản Trị Viên (Admin)
+            {% elif current_user.role == 'office' %}Kế Toán Văn Phòng
+            {% elif current_user.role == 'site' %}Thủ Kho Công Trường
+            {% else %}Chỉ Xem (Tổ Đội)
+            {% endif %}
+          </div>
+        </div>
+        <a href="{{ url_for('logout_view') }}" title="Đăng xuất" class="p-1 hover:bg-[#124782] rounded transition-colors text-white font-bold ml-1">
+          🚪
+        </a>
+      </div>
+    </aside>
+
+    <!-- 2. KHỐI NỘI DUNG PHẢI -->
+    <div class="flex-1 flex flex-col h-screen overflow-hidden">
+
+      <!-- TOP HEADER (THANH TIÊU ĐỀ TRÊN CÙNG MÀU XANH BIGCOM #195faa) -->
+      <header class="bg-[#195faa] text-white px-4 py-2 flex items-center justify-between shadow-sm z-10 flex-shrink-0">
+        
+        <div class="flex items-center gap-3">
+          <button type="button" class="text-white hover:text-blue-200 text-lg font-bold">☰</button>
+          
+          <!-- Hộp chọn cơ sở / dự án -->
+          <div class="flex items-center gap-1.5 bg-[#124782] px-2.5 py-1 rounded text-white text-xs font-semibold cursor-pointer border border-blue-400/30">
+            <span>🏢</span>
+            <span>{{ current_branch }}</span>
+            <span class="text-[10px]">▼</span>
+          </div>
+
+          <span class="text-xs font-bold text-white tracking-wider hidden md:inline ml-2">
+            HỆ THỐNG QUẢN LÝ VẬT TƯ & TỒN KHO BIGCOM
+          </span>
+        </div>
+
+        <div class="flex items-center gap-3 text-xs">
+          <span class="text-blue-100 text-[11px] hidden sm:inline">{{ system_version }}</span>
+          
+          <div class="flex items-center gap-1.5 bg-[#124782] px-2.5 py-1 rounded text-white font-medium">
+            <span class="w-5 h-5 rounded-full bg-white text-[#195faa] flex items-center justify-center font-bold text-[10px]">
+              {{ current_user.full_name[0] }}
+            </span>
+            <span class="hidden sm:inline">{{ current_user.full_name }}</span>
+            <span class="text-[10px]">▼</span>
+          </div>
+
+          <a href="{{ url_for('logout_view') }}" class="px-2 py-1 rounded bg-[#0f3b6d] hover:bg-blue-900 text-white font-semibold text-[11px] transition-colors flex items-center gap-1">
+            <span>Thoát</span>
+          </a>
+        </div>
+      </header>
+
+      <!-- SUB-NAVIGATION TABS (THANH TABS CHUYÊN NGHIỆP PHONG CÁCH CUKCUK) -->
+      <div class="bg-white border-b border-slate-200 px-4 flex items-center justify-between flex-shrink-0">
+        <div class="flex items-center gap-0 overflow-x-auto text-xs font-medium">
+          <a href="{{ url_for('dashboard_view') }}" class="px-4 py-2.5 border-b-2 font-bold transition-colors flex items-center gap-1.5 {% if request.endpoint == 'dashboard_view' %}border-[#195faa] text-[#195faa] bg-blue-50/50{% else %}border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50{% endif %}">
+            <span>⭐</span> Tổng hợp tồn kho
+          </a>
+
+          {% if can_edit %}
+          <a href="{{ url_for('import_stock_view') }}" class="px-4 py-2.5 border-b-2 font-bold transition-colors flex items-center gap-1.5 {% if request.endpoint == 'import_stock_view' %}border-[#195faa] text-[#195faa] bg-blue-50/50{% else %}border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50{% endif %}">
+            <span>📥</span> Nhập kho
+          </a>
+
+          <a href="{{ url_for('export_stock_view') }}" class="px-4 py-2.5 border-b-2 font-bold transition-colors flex items-center gap-1.5 {% if request.endpoint == 'export_stock_view' %}border-[#195faa] text-[#195faa] bg-blue-50/50{% else %}border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50{% endif %}">
+            <span>📤</span> Xuất kho
+          </a>
+          {% endif %}
+
+          <a href="{{ url_for('reconciliation_view') }}" class="px-4 py-2.5 border-b-2 font-bold transition-colors flex items-center gap-1.5 {% if request.endpoint == 'reconciliation_view' %}border-[#195faa] text-[#195faa] bg-blue-50/50{% else %}border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50{% endif %}">
+            <span>⚖️</span> Đối soát Công trường - KT
+          </a>
+
+          <a href="{{ url_for('reconciliation_cdt_view') }}" class="px-4 py-2.5 border-b-2 font-bold transition-colors flex items-center gap-1.5 {% if request.endpoint == 'reconciliation_cdt_view' %}border-[#195faa] text-[#195faa] bg-blue-50/50{% else %}border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50{% endif %}">
+            <span>🤝</span> Đối soát CĐT (ĐNVT)
+          </a>
+
+          {% if is_office_or_admin %}
+          <a href="{{ url_for('purchases_view') }}" class="px-4 py-2.5 border-b-2 font-bold transition-colors flex items-center gap-1.5 {% if request.endpoint == 'purchases_view' %}border-[#195faa] text-[#195faa] bg-blue-50/50{% else %}border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50{% endif %}">
+            <span>💰</span> Mua vào & Đơn giá
+          </a>
+          {% endif %}
+
+          <a href="{{ url_for('contract_view') }}" class="px-4 py-2.5 border-b-2 font-bold transition-colors flex items-center gap-1.5 {% if request.endpoint == 'contract_view' %}border-[#195faa] text-[#195faa] bg-blue-50/50{% else %}border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50{% endif %}">
+            <span>📑</span> Hợp đồng BOQ
+          </a>
+        </div>
+
+        <div class="flex items-center gap-2 text-xs py-1">
+          <a href="{{ url_for('export_excel_report') }}" class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1 shadow-sm transition-colors">
+            <span>📥</span> Xuất Excel
+          </a>
+        </div>
+      </div>
+
+      <!-- Flash Notification Box -->
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="px-4 pt-2 flex-shrink-0">
+            {% for category, message in messages %}
+              <div class="p-2.5 rounded border text-xs flex items-center justify-between shadow-sm {% if category == 'success' %}bg-emerald-50 border-emerald-300 text-emerald-800{% elif category == 'danger' %}bg-red-50 border-red-300 text-red-800{% elif category == 'warning' %}bg-amber-50 border-amber-300 text-amber-800{% else %}bg-blue-50 border-blue-300 text-blue-800{% endif %}">
+                <span>{{ message }}</span>
+                <button onclick="this.parentElement.remove()" class="text-slate-400 hover:text-slate-700 font-bold ml-2">✕</button>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <!-- MAIN SCROLLABLE CONTENT AREA -->
+      <main class="flex-1 p-3 overflow-hidden flex flex-col">
+        {% block content %}{% endblock %}
+      </main>
+
+      <!-- FOOTER STATUS BAR -->
+      <footer class="bg-white border-t border-slate-200 px-4 py-1.5 text-[11px] text-slate-500 flex items-center justify-between flex-shrink-0">
+        <div>QUẢN LÝ TỒN KHO BIGCOM &copy; 2026 - Dự Án Đồng Hòa. Trực tiếp từ máy chủ văn phòng.</div>
+        <div class="flex items-center gap-3">
+          <span class="text-emerald-700 font-semibold">● Đã kết nối SQLite Realtime</span>
+          <span class="text-slate-400">{{ today_display }}</span>
+        </div>
+      </footer>
+
+    </div>
+  </div>
+
+  {% else %}
+  <main class="flex-1 flex items-center justify-center p-4">
+    {% block login_content %}{% endblock %}
+  </main>
+  {% endif %}
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

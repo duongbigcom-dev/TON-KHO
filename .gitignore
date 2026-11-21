@@ -1,0 +1,19 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Temporary / OS files
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+*.swo
+
+# IDE configs
+.vscode/
+.idea/
+
+# Uploads directory contents (keep folder via .gitkeep)
+uploads/*
+!uploads/.gitkeep

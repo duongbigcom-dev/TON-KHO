@@ -1,0 +1,571 @@
+{% extends "base.html" %}
+
+{% block title %}Nhập kho - QUẢN LÝ TỒN KHO BIGCOM{% endblock %}
+
+{% block content %}
+<div class="flex-1 flex flex-col h-full space-y-2 overflow-hidden">
+
+  <!-- TOP HEADER & ACTION BAR -->
+  <div class="flex items-center justify-between flex-shrink-0">
+    <div class="flex items-center gap-2">
+      <h1 class="text-base font-bold text-slate-800 tracking-tight flex items-center gap-2">
+        <span>Kho</span>
+        <span class="text-slate-400 font-normal">/</span>
+        <span class="text-xs font-semibold text-[#195faa]">Nhập kho</span>
+      </h1>
+      <span class="text-[11px] bg-blue-100 text-[#195faa] px-2 py-0.5 rounded font-bold">
+        {{ receipts|length }} Lượt Nhập
+      </span>
+      <span class="text-xs text-slate-500 ml-2 hidden sm:inline">Số phiếu kế tiếp: <b class="text-[#195faa] font-bold">{{ next_voucher_code }}</b></span>
+    </div>
+
+    <!-- Quick Action Buttons -->
+    <div class="flex items-center gap-2">
+      {% if can_edit %}
+      <button type="button" onclick="openImportModal()" class="px-3 py-1.5 rounded bg-[#195faa] hover:bg-[#124782] text-white font-semibold text-xs flex items-center gap-1.5 shadow-sm transition-colors">
+        <span>+</span> Nhập vật tư
+      </button>
+      {% endif %}
+      <a href="{{ url_for('export_receipts_excel', q=search_q, supplier=supplier_filter, from_date=from_date, to_date=to_date) }}" class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-sm transition-colors">
+        <span>📥</span> Xuất Excel
+      </a>
+    </div>
+  </div>
+
+  <!-- TOOLBAR FILTER FORM -->
+  <form method="GET" action="{{ url_for('import_stock_view') }}" class="bg-white p-2.5 rounded border border-slate-300 shadow-sm flex flex-wrap items-center gap-2.5 flex-shrink-0 text-xs">
+    
+    <!-- Lọc Ngày tháng -->
+    <div class="flex items-center gap-1.5">
+      <span class="text-slate-600 font-medium">Từ ngày</span>
+      <input type="date" name="from_date" value="{{ from_date }}" class="px-2 py-1 rounded border border-slate-300 text-slate-700 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+      <span class="text-slate-600 font-medium">Đến</span>
+      <input type="date" name="to_date" value="{{ to_date }}" class="px-2 py-1 rounded border border-slate-300 text-slate-700 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+    </div>
+
+    <div class="h-4 w-px bg-slate-300 hidden md:block"></div>
+
+    <!-- Lọc Nhà Cung Cấp -->
+    <div class="flex items-center gap-1">
+      <span class="text-slate-600 font-medium">Nhà Cung Cấp / CĐT</span>
+      <select name="supplier" class="px-2 py-1 rounded border border-slate-300 bg-slate-50 text-slate-700 font-medium focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+        <option value="">--Tất cả nhà cung cấp--</option>
+        {% for s in all_suppliers %}
+          <option value="{{ s }}" {% if supplier_filter == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Ô tìm kiếm từ khóa -->
+    <div class="flex items-center gap-1 flex-1 min-w-[200px]">
+      <span class="text-slate-600 font-medium">NVL</span>
+      <input type="text" name="q" value="{{ search_q }}" placeholder="Tìm theo số phiếu, mã VT, tên vật tư, phiếu YC..." class="w-full px-2.5 py-1 rounded border border-slate-300 bg-slate-50 focus:bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+    </div>
+
+    <!-- Nút Lấy dữ liệu -->
+    <button type="submit" class="px-3 py-1 rounded bg-[#195faa] hover:bg-[#124782] text-white font-bold flex items-center gap-1.5 shadow-sm transition-colors whitespace-nowrap">
+      <span>🔍</span> Lấy dữ liệu
+    </button>
+
+    {% if search_q or supplier_filter or from_date or to_date %}
+      <a href="{{ url_for('import_stock_view') }}" class="px-2 py-1 rounded border border-slate-300 text-slate-600 hover:bg-slate-100 text-[11px]">
+        Xóa lọc
+      </a>
+    {% endif %}
+  </form>
+
+  <!-- BẢNG HIỂN THỊ CHỦ YẾU: LỊCH SỬ NHẬP KHO (STICKY HEADER, CUỘN 2 CHIỀU) -->
+  <div class="flex-1 bg-white rounded border border-slate-300 shadow-sm overflow-hidden flex flex-col">
+    
+    <div class="flex-1 overflow-x-auto overflow-y-auto">
+      <table class="w-full text-xs text-left border-collapse min-w-[1100px]">
+        <thead class="sticky top-0 bg-slate-100 text-slate-700 z-10 border-b border-slate-300 font-bold select-none shadow-sm">
+          <tr>
+            <th class="p-2 border-r border-slate-300 text-center w-12 bg-slate-100">STT</th>
+            <th class="p-2 border-r border-slate-300 text-center w-24">Số Phiếu</th>
+            <th class="p-2 border-r border-slate-300 text-center w-24">Ngày Nhập</th>
+            <th class="p-2 border-r border-slate-300 w-28 whitespace-nowrap">Mã VT</th>
+            <th class="p-2 border-r border-slate-300 min-w-[220px]">Tên Chi Tiết Vật Tư</th>
+            <th class="p-2 border-r border-slate-300 text-center min-w-[110px]">Hãng</th>
+            <th class="p-2 border-r border-slate-300 text-center w-16">ĐVT</th>
+            <th class="p-2 border-r border-slate-300 text-right w-28 text-emerald-800 bg-emerald-50/50">Số Lượng</th>
+            <th class="p-2 border-r border-slate-300 text-center min-w-[140px]">Nhà Cung Cấp / CĐT</th>
+            <th class="p-2 border-r border-slate-300 text-center w-24 text-blue-700">Theo Phiếu YC</th>
+            <th class="p-2 border-r border-slate-300 min-w-[160px]">Ghi Chú</th>
+            <th class="p-2 text-center w-28">Người Nhập</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-200">
+          {% for r in receipts %}
+          <tr class="hover:bg-blue-50/50 transition-colors {% if loop.index % 2 == 0 %}bg-slate-50/60{% else %}bg-white{% endif %}">
+            <td class="p-2 border-r border-slate-200 text-center text-slate-500 font-medium">{{ loop.index }}</td>
+            <td class="p-2 border-r border-slate-200 text-center font-bold text-[#195faa] whitespace-nowrap">{{ r.voucher_code }}</td>
+            <td class="p-2 border-r border-slate-200 text-center text-slate-600 whitespace-nowrap">{{ r.voucher_date }}</td>
+            <td class="p-2 border-r border-slate-200 font-bold text-slate-700 whitespace-nowrap">{{ r.material_code }}</td>
+            <td class="p-2 border-r border-slate-200 font-semibold text-slate-800">{{ r.material_name or r.material_code }}</td>
+            <td class="p-2 border-r border-slate-200 text-center text-slate-600">{{ r.brand or '-' }}</td>
+            <td class="p-2 border-r border-slate-200 text-center font-medium text-slate-600">{{ r.unit or '-' }}</td>
+            <td class="p-2 border-r border-slate-200 text-right font-bold text-sm text-emerald-700 bg-emerald-50/20">
+              {{ "{:,.0f}".format(r.quantity) }}
+            </td>
+            <td class="p-2 border-r border-slate-200 text-center text-slate-700 font-medium">{{ r.supplier or '-' }}</td>
+            <td class="p-2 border-r border-slate-200 text-center font-bold text-blue-700">{{ r.request_code or '-' }}</td>
+            <td class="p-2 border-r border-slate-200 text-slate-500 text-[11px]">{{ r.notes or '-' }}</td>
+            <td class="p-2 text-center text-slate-600 text-[11px]">{{ r.created_by or '-' }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="12" class="p-8 text-center text-slate-400">Không tìm thấy dữ liệu phiếu nhập kho nào khớp với điều kiện lọc.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination Footer -->
+    <div class="bg-slate-50 border-t border-slate-300 px-3 py-1.5 flex items-center justify-between text-xs text-slate-600 flex-shrink-0">
+      <div>Hiển thị <b class="text-slate-800">{{ receipts|length }}</b> lượt nhập kho</div>
+      <div class="text-[11px] text-slate-500">Mới nhất xếp trên • Số lượng đã làm tròn số nguyên</div>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- ============================================================================== -->
+<!-- CỬA SỔ MODAL NHẬP VẬT TƯ (GỒM NHẬP TRỰC TIẾP, TẢI FILE EXCEL, QUÉT PDF SCAN) -->
+<!-- ============================================================================== -->
+
+<div id="importModal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-3">
+  <div class="bg-white rounded-xl shadow-2xl border border-slate-300 w-full max-w-6xl max-h-[95vh] flex flex-col overflow-hidden">
+    
+    <!-- Modal Header -->
+    <div class="bg-[#195faa] text-white p-3.5 flex items-center justify-between flex-shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-lg">📥</span>
+        <h3 class="font-bold text-sm">Nhập Vật Tư Vào Kho (Số Phiếu Kế Tiếp: {{ next_voucher_code }})</h3>
+      </div>
+      <button type="button" onclick="closeImportModal()" class="text-white hover:text-blue-200 text-lg font-bold">✕</button>
+    </div>
+
+    <!-- Modal Tabs Navigation (3 Kênh Nhập Liệu) -->
+    <div class="bg-slate-100 border-b border-slate-200 flex text-xs font-semibold flex-shrink-0">
+      <button type="button" id="tabBtnDirect" onclick="switchImportTab('direct')" class="flex-1 py-2.5 border-b-2 border-[#195faa] text-[#195faa] bg-white transition-colors flex items-center justify-center gap-1.5 font-bold">
+        <span>✍️</span> 1. Nhập Trực Tiếp (Thủ Công)
+      </button>
+      <button type="button" id="tabBtnExcel" onclick="switchImportTab('excel')" class="flex-1 py-2.5 border-b-2 border-transparent text-slate-600 hover:text-slate-900 bg-slate-50 transition-colors flex items-center justify-center gap-1.5 font-semibold">
+        <span>📊</span> 2. Tải File Excel
+      </button>
+      <button type="button" id="tabBtnPdf" onclick="switchImportTab('pdf')" class="flex-1 py-2.5 border-b-2 border-transparent text-slate-600 hover:text-slate-900 bg-slate-50 transition-colors flex items-center justify-center gap-1.5 font-semibold">
+        <span>📷</span> 3. Quét PDF Scan / AI OCR
+      </button>
+    </div>
+
+    <!-- Modal Content Body -->
+    <div class="p-4 overflow-y-auto flex-1 text-xs">
+      
+      <!-- TAB 1: FORM NHẬP TRỰC TIẾP (GIỮ NGUYÊN KIỂU THÔNG TIN PHIẾU NHẬP KHO CŨ) -->
+      <div id="tabContentDirect" class="space-y-3">
+        <form method="POST" action="{{ url_for('import_stock_view') }}" class="space-y-3">
+          
+          <div class="flex items-center justify-between border-b border-slate-200 pb-1.5">
+            <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wide">THÔNG TIN PHIẾU NHẬP KHO</h4>
+            <span class="text-[11px] text-slate-500">Người lập: <b>{{ current_user.full_name }}</b></span>
+          </div>
+
+          <!-- Thông tin chung của phiếu -->
+          <div class="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Số phiếu nhập <span class="text-red-500">*</span></label>
+              <input type="text" name="voucher_code" id="voucher_code" value="{{ next_voucher_code }}" required class="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#195faa] font-bold text-[#195faa] bg-blue-50/30">
+            </div>
+
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Ngày nhập <span class="text-red-500">*</span></label>
+              <input type="date" name="voucher_date" id="voucher_date" value="{{ today_str }}" required class="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+            </div>
+
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Nhà Cung Cấp / CĐT</label>
+              <input type="text" name="supplier" id="supplier" list="supplierDatalist" placeholder="Bạch Đằng, Sino, Cadisun..." class="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+              <datalist id="supplierDatalist">
+                {% for s in all_suppliers %}
+                  <option value="{{ s }}">
+                {% endfor %}
+              </datalist>
+            </div>
+
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Theo Phiếu Yêu Cầu (PYC)</label>
+              <input type="text" name="request_code" id="request_code" placeholder="PYC01, PYC02..." class="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+            </div>
+          </div>
+
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Ghi chú phiếu nhập</label>
+            <input type="text" name="notes" placeholder="Số hóa đơn, biên bản bàn giao xe hàng, tài xế..." class="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+          </div>
+
+          <!-- BẢNG CHI TIẾT VẬT TƯ: CÓ CỘT STT, HỖ TRỢ NHẬP CẢ THEO TÊN LẪN THEO MÃ, HÃNG CĂN GIỮA -->
+          <div class="border border-slate-300 rounded overflow-hidden mt-2">
+            <div class="bg-slate-100 p-2 font-bold text-xs text-slate-700 border-b border-slate-300 flex items-center justify-between">
+              <span>DANH SÁCH VẬT TƯ BÀN GIAO</span>
+              <span class="text-[11px] font-normal text-slate-500">💡 Có thể chọn hoặc gõ tìm kiếm theo <b>Tên chi tiết</b> hoặc <b>Mã vật tư</b></span>
+            </div>
+
+            <div class="overflow-x-auto max-h-[50vh] overflow-y-auto">
+              <table class="w-full text-xs text-left border-collapse">
+                <thead class="bg-slate-50 border-b border-slate-300 text-slate-600 font-semibold sticky top-0 z-10">
+                  <tr>
+                    <th class="p-2 w-12 border-r border-slate-200 text-center bg-slate-50">STT</th>
+                    <th class="p-2 w-44 border-r border-slate-200">Mã Vật Tư <span class="text-red-500">*</span></th>
+                    <th class="p-2 border-r border-slate-200 min-w-[260px]">Tên Chi Tiết Vật Tư (Gõ tìm) <span class="text-red-500">*</span></th>
+                    <th class="p-2 w-28 border-r border-slate-200 text-center">Hãng</th>
+                    <th class="p-2 w-16 text-center border-r border-slate-200">ĐVT</th>
+                    <th class="p-2 w-32 text-right border-r border-slate-200 text-[#195faa]">Số Lượng <span class="text-red-500">*</span></th>
+                    <th class="p-2 w-12 text-center">Xóa</th>
+                  </tr>
+                </thead>
+                <tbody id="importItemsTableBody" class="divide-y divide-slate-200">
+                  <tr>
+                    <!-- Cột STT -->
+                    <td class="p-1.5 border-r border-slate-200 text-center font-bold text-slate-500 row-stt">1</td>
+
+                    <!-- Ô Mã VT -->
+                    <td class="p-1.5 border-r border-slate-200">
+                      <input type="text" name="material_code[]" list="materialsCodeList" oninput="onCodeInput(this)" placeholder="Gõ/chọn mã..." required class="mat-code-input w-full px-2 py-1 rounded border border-slate-300 font-bold text-[#195faa] focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+                    </td>
+
+                    <!-- Ô Tên VT (Hỗ trợ tìm kiếm theo tên chi tiết) -->
+                    <td class="p-1.5 border-r border-slate-200">
+                      <input type="text" name="material_name_input[]" list="materialsNameList" oninput="onNameInput(this)" placeholder="Gõ tên vật tư cần tìm..." class="mat-name-input w-full px-2 py-1 rounded border border-slate-300 font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+                    </td>
+
+                    <!-- Hãng (Căn giữa ô) -->
+                    <td class="p-1.5 border-r border-slate-200 text-center text-slate-600">
+                      <span class="mat-brand text-slate-600">-</span>
+                    </td>
+
+                    <!-- ĐVT -->
+                    <td class="p-1.5 border-r border-slate-200 text-center font-semibold text-slate-600">
+                      <span class="mat-unit">-</span>
+                    </td>
+
+                    <!-- Số Lượng -->
+                    <td class="p-1.5 border-r border-slate-200 text-right">
+                      <input type="number" step="1" name="quantity[]" value="100" required class="w-full px-2 py-1 text-right rounded border border-slate-300 font-bold text-emerald-700 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+                    </td>
+
+                    <!-- Xóa dòng -->
+                    <td class="p-1.5 text-center">
+                      <button type="button" onclick="removeMaterialRow(this)" class="text-slate-400 hover:text-red-600 font-bold text-sm">✕</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Buttons Footer of Form -->
+          <div class="flex items-center justify-between pt-2 border-t border-slate-200">
+            <button type="button" onclick="addNewMaterialRow()" class="px-3 py-1.5 rounded border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold text-xs flex items-center gap-1 transition-colors">
+              <span>+</span> Thêm Dòng Vật Tư
+            </button>
+
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="closeImportModal()" class="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-100 text-slate-700 font-medium">Hủy</button>
+              <button type="submit" class="px-4 py-1.5 rounded bg-[#195faa] hover:bg-[#124782] text-white font-bold text-xs shadow transition-colors flex items-center gap-1.5">
+                <span>💾</span> LƯU PHIẾU NHẬP (SỐ {{ next_voucher_code }})
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <!-- TAB 2: NẠP FILE EXCEL -->
+      <div id="tabContentExcel" class="hidden space-y-4">
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-3">
+          <span class="text-2xl">📊</span>
+          <div>
+            <div class="font-bold text-[#195faa]">Nạp dữ liệu từ file Excel có sẵn</div>
+            <div class="text-[11px] text-slate-600">Hệ thống hỗ trợ đọc trực tiếp sheet 'Nhập kho' tương thích biểu mẫu theo dõi dự án Đồng Hòa.</div>
+          </div>
+        </div>
+
+        <form action="{{ url_for('api_import_excel') }}" method="POST" enctype="multipart/form-data" class="space-y-3">
+          <div class="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center bg-slate-50 hover:bg-white hover:border-[#195faa] transition-colors">
+            <div class="text-3xl mb-1">📁</div>
+            <div class="font-semibold text-slate-700 mb-1">Chọn Tệp Tin Excel Nhập Kho</div>
+            <div class="text-[11px] text-slate-500 mb-3">Hỗ trợ định dạng .xlsx, .xls</div>
+            <input type="file" name="excel_file" accept=".xlsx,.xls" required class="text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-blue-100 file:text-[#195faa] hover:file:bg-blue-200">
+          </div>
+
+          <div class="flex justify-end gap-2 pt-2 border-t border-slate-200">
+            <button type="button" onclick="closeImportModal()" class="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-100 text-slate-700 font-medium">Đóng</button>
+            <button type="submit" class="px-4 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-colors flex items-center gap-1">
+              <span>📤</span> Bắt Đầu Tải Lên & Nạp Kho
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- TAB 3: QUÉT PDF SCAN / AI OCR -->
+      <div id="tabContentPdf" class="hidden space-y-4">
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-3">
+          <span class="text-2xl">📷</span>
+          <div>
+            <div class="font-bold text-[#195faa]">Bóc tách tự động bằng AI OCR</div>
+            <div class="text-[11px] text-slate-600">Chụp ảnh phiếu giao hàng của NCC hoặc tải file PDF scan. AI tự động đọc mã, tên và số lượng để điền vào phiếu nhập.</div>
+          </div>
+        </div>
+
+        <!-- Trạng thái Loading / Success của OCR -->
+        <div id="ocrLoadingBox" class="hidden p-3 bg-blue-50 border border-blue-300 rounded text-xs text-blue-900 flex items-center gap-2.5">
+          <div class="animate-spin rounded-full h-4 w-4 border-2 border-[#195faa] border-t-transparent"></div>
+          <span>Đang phân tích và bóc tách dữ liệu từ file PDF scan bằng OCR, vui lòng chờ trong giây lát...</span>
+        </div>
+
+        <div id="ocrSuccessBox" class="hidden p-3 bg-emerald-50 border border-emerald-300 rounded text-xs text-emerald-900 flex items-center justify-between">
+          <div>
+            <div class="font-bold">✅ Bóc tách dữ liệu thành công!</div>
+            <div class="text-[11px] text-emerald-700">Các dòng vật tư đã được chuyển vào Tab 'Nhập Trực Tiếp'. Vui lòng kiểm tra lại số liệu.</div>
+          </div>
+          <button type="button" onclick="switchImportTab('direct')" class="px-3 py-1 bg-emerald-600 text-white rounded font-bold text-xs shadow">
+            Xem Form Nhập →
+          </button>
+        </div>
+
+        <div class="border-2 border-dashed border-[#195faa]/40 rounded-lg p-6 text-center bg-blue-50/30 hover:bg-blue-50/70 transition-colors">
+          <input type="file" id="pdfFileInput" accept=".pdf,image/*" class="hidden" onchange="uploadScanPDF(this)">
+          <div class="text-3xl mb-1">📄</div>
+          <div class="font-semibold text-slate-800 mb-1">Chọn File Hóa Đơn / Biên Bản Giao Hàng PDF Hoặc Ảnh Chụp</div>
+          <div class="text-[11px] text-slate-500 mb-3">Tự động nhận diện nhà cung cấp Sino, Cadisun, Bạch Đằng...</div>
+          <button type="button" onclick="document.getElementById('pdfFileInput').click()" class="px-4 py-2 bg-[#195faa] hover:bg-[#124782] text-white rounded font-bold text-xs shadow flex items-center justify-center gap-1.5 mx-auto transition-colors">
+            <span>⚡</span> Chọn File PDF / Ảnh Chụp Để Quét
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+<!-- DATALIST DANH MỤC VẬT TƯ: HỖ TRỢ TÌM KIẾM 2 CHIỀU CỰC NHANH -->
+<datalist id="materialsCodeList">
+  {% for m in materials %}
+    <option value="{{ m.code }}">{{ m.code }} - {{ m.name }}</option>
+  {% endfor %}
+</datalist>
+
+<datalist id="materialsNameList">
+  {% for m in materials %}
+    <option value="{{ m.name }}">{{ m.name }} (Mã: {{ m.code }})</option>
+  {% endfor %}
+</datalist>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Dữ liệu vật tư để ánh xạ tức thời 2 chiều (Mã <-> Tên)
+  const materialsData = [
+    {% for m in materials %}
+      { 
+        code: {{ m.code|tojson }}, 
+        name: {{ m.name|tojson }}, 
+        brand: {{ (m.brand or '')|tojson }}, 
+        unit: {{ m.unit|tojson }} 
+      },
+    {% endfor %}
+  ];
+
+  const byCodeMap = {};
+  const byNameMap = {};
+  materialsData.forEach(item => {
+    byCodeMap[item.code.toLowerCase().trim()] = item;
+    byNameMap[item.name.toLowerCase().trim()] = item;
+  });
+
+  // Khi người dùng gõ / chọn Mã VT -> tự động điền Tên, Hãng, ĐVT
+  function onCodeInput(input) {
+    const val = input.value.trim().toLowerCase();
+    const row = input.closest('tr');
+    const nameInput = row.querySelector('.mat-name-input');
+    const brandSpan = row.querySelector('.mat-brand');
+    const unitSpan = row.querySelector('.mat-unit');
+
+    if (byCodeMap[val]) {
+      const m = byCodeMap[val];
+      nameInput.value = m.name;
+      brandSpan.textContent = m.brand || '-';
+      unitSpan.textContent = m.unit;
+    }
+  }
+
+  // Khi người dùng gõ / chọn Tên VT -> tự động tìm kiếm gợi ý và điền ngược lại Mã, Hãng, ĐVT
+  function onNameInput(input) {
+    const val = input.value.trim().toLowerCase();
+    const row = input.closest('tr');
+    const codeInput = row.querySelector('.mat-code-input');
+    const brandSpan = row.querySelector('.mat-brand');
+    const unitSpan = row.querySelector('.mat-unit');
+
+    if (!val) return;
+
+    // 1. Khớp chính xác tên
+    if (byNameMap[val]) {
+      const m = byNameMap[val];
+      codeInput.value = m.code;
+      brandSpan.textContent = m.brand || '-';
+      unitSpan.textContent = m.unit;
+      return;
+    }
+
+    // 2. Hoặc nếu chuỗi có dạng "Tên (Mã: xxx)" từ datalist
+    const codeInBracketMatch = input.value.match(/\(Mã:\s*([^)]+)\)/i);
+    if (codeInBracketMatch && codeInBracketMatch[1]) {
+      const extractedCode = codeInBracketMatch[1].trim().toLowerCase();
+      if (byCodeMap[extractedCode]) {
+        const m = byCodeMap[extractedCode];
+        codeInput.value = m.code;
+        input.value = m.name;
+        brandSpan.textContent = m.brand || '-';
+        unitSpan.textContent = m.unit;
+        return;
+      }
+    }
+
+    // 3. Khớp tương đối theo tên chứa từ khóa
+    const found = materialsData.find(m => m.name.toLowerCase() === val || (val.length >= 3 && m.name.toLowerCase().startsWith(val)));
+    if (found) {
+      codeInput.value = found.code;
+      brandSpan.textContent = found.brand || '-';
+      unitSpan.textContent = found.unit;
+    }
+  }
+
+  function updateRowSTT() {
+    const rows = document.querySelectorAll('#importItemsTableBody tr');
+    rows.forEach((row, idx) => {
+      const sttCell = row.querySelector('.row-stt');
+      if (sttCell) sttCell.textContent = idx + 1;
+    });
+  }
+
+  function removeMaterialRow(btn) {
+    const tbody = document.getElementById('importItemsTableBody');
+    if (tbody.querySelectorAll('tr').length > 1) {
+      btn.closest('tr').remove();
+      updateRowSTT();
+    } else {
+      alert("Phiếu nhập phải có ít nhất 1 dòng vật tư.");
+    }
+  }
+
+  function addNewMaterialRow(code = '', name = '', brand = '', unit = '', qty = 100) {
+    const tbody = document.getElementById('importItemsTableBody');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="p-1.5 border-r border-slate-200 text-center font-bold text-slate-500 row-stt"></td>
+      <td class="p-1.5 border-r border-slate-200">
+        <input type="text" name="material_code[]" value="${code}" list="materialsCodeList" oninput="onCodeInput(this)" placeholder="Gõ/chọn mã..." required class="mat-code-input w-full px-2 py-1 rounded border border-slate-300 font-bold text-[#195faa] focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+      </td>
+      <td class="p-1.5 border-r border-slate-200">
+        <input type="text" name="material_name_input[]" value="${name}" list="materialsNameList" oninput="onNameInput(this)" placeholder="Gõ tên vật tư cần tìm..." class="mat-name-input w-full px-2 py-1 rounded border border-slate-300 font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+      </td>
+      <td class="p-1.5 border-r border-slate-200 text-center text-slate-600">
+        <span class="mat-brand text-slate-600">${brand || '-'}</span>
+      </td>
+      <td class="p-1.5 border-r border-slate-200 text-center font-semibold text-slate-600">
+        <span class="mat-unit">${unit || '-'}</span>
+      </td>
+      <td class="p-1.5 border-r border-slate-200 text-right">
+        <input type="number" step="1" name="quantity[]" value="${Math.round(qty)}" required class="w-full px-2 py-1 text-right rounded border border-slate-300 font-bold text-emerald-700 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+      </td>
+      <td class="p-1.5 text-center">
+        <button type="button" onclick="removeMaterialRow(this)" class="text-slate-400 hover:text-red-600 font-bold text-sm">✕</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+    updateRowSTT();
+  }
+
+  function openImportModal() {
+    document.getElementById('importModal').classList.remove('hidden');
+    switchImportTab('direct');
+  }
+
+  function closeImportModal() {
+    document.getElementById('importModal').classList.add('hidden');
+  }
+
+  function switchImportTab(tab) {
+    const btnDirect = document.getElementById('tabBtnDirect');
+    const btnExcel = document.getElementById('tabBtnExcel');
+    const btnPdf = document.getElementById('tabBtnPdf');
+
+    const contentDirect = document.getElementById('tabContentDirect');
+    const contentExcel = document.getElementById('tabContentExcel');
+    const contentPdf = document.getElementById('tabContentPdf');
+
+    // Reset styles
+    [btnDirect, btnExcel, btnPdf].forEach(b => {
+      b.className = "flex-1 py-2.5 border-b-2 border-transparent text-slate-600 hover:text-slate-900 bg-slate-50 transition-colors flex items-center justify-center gap-1.5 font-semibold";
+    });
+    [contentDirect, contentExcel, contentPdf].forEach(c => c.classList.add('hidden'));
+
+    if (tab === 'direct') {
+      btnDirect.className = "flex-1 py-2.5 border-b-2 border-[#195faa] text-[#195faa] bg-white transition-colors flex items-center justify-center gap-1.5 font-bold";
+      contentDirect.classList.remove('hidden');
+    } else if (tab === 'excel') {
+      btnExcel.className = "flex-1 py-2.5 border-b-2 border-[#195faa] text-[#195faa] bg-white transition-colors flex items-center justify-center gap-1.5 font-bold";
+      contentExcel.classList.remove('hidden');
+    } else if (tab === 'pdf') {
+      btnPdf.className = "flex-1 py-2.5 border-b-2 border-[#195faa] text-[#195faa] bg-white transition-colors flex items-center justify-center gap-1.5 font-bold";
+      contentPdf.classList.remove('hidden');
+    }
+  }
+
+  async function uploadScanPDF(input) {
+    if (!input.files || input.files.length === 0) return;
+    const file = input.files[0];
+
+    const loadingBox = document.getElementById('ocrLoadingBox');
+    const successBox = document.getElementById('ocrSuccessBox');
+    loadingBox.classList.remove('hidden');
+    successBox.classList.add('hidden');
+
+    const formData = new FormData();
+    formData.append('pdf_file', file);
+
+    try {
+      const response = await fetch('/api/scan-pdf', {
+        method: 'POST',
+        body: formData
+      });
+      const result = await response.json();
+      loadingBox.classList.add('hidden');
+
+      if (result.success && result.data) {
+        successBox.classList.remove('hidden');
+        const data = result.data;
+        if (data.supplier) document.getElementById('supplier').value = data.supplier;
+
+        if (data.items && data.items.length > 0) {
+          const tbody = document.getElementById('importItemsTableBody');
+          tbody.innerHTML = '';
+          data.items.forEach(item => {
+            addNewMaterialRow(item.material_code, item.material_name, item.brand, item.unit, Math.round(item.quantity));
+          });
+        }
+      } else {
+        alert("Không nhận diện được nội dung: " + (result.message || 'Lỗi'));
+      }
+    } catch (err) {
+      loadingBox.classList.add('hidden');
+      alert("Lỗi kết nối: " + err.message);
+    }
+  }
+</script>
+{% endblock %}

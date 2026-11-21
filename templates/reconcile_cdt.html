@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block title %}Đối Soát Vật Tư CĐT / Thầu Chính - QUẢN LÝ TỒN KHO BIGCOM{% endblock %}
+
+{% block content %}
+<div class="flex-1 flex flex-col h-full space-y-2 overflow-hidden">
+
+  <!-- TOP TITLE & ACTION BAR -->
+  <div class="flex items-center justify-between flex-shrink-0">
+    <div class="flex items-center gap-2">
+      <h1 class="text-base font-bold text-slate-800 tracking-tight flex items-center gap-2">
+        <span>Kho</span>
+        <span class="text-slate-400 font-normal">/</span>
+        <span class="text-xs font-semibold text-[#195faa]">Đối Soát Vật Tư CĐT / Thầu Chính (ĐNVT)</span>
+      </h1>
+      <span class="text-[11px] bg-blue-100 text-[#195faa] px-2 py-0.5 rounded font-bold">
+        {{ items|length }} Dòng Yêu Cầu
+      </span>
+    </div>
+
+    <!-- Quick Action Buttons -->
+    <div class="flex items-center gap-2">
+      {% if can_edit %}
+      <button type="button" onclick="openNewRequestModal()" class="px-2.5 py-1.5 rounded bg-[#195faa] hover:bg-[#124782] text-white font-semibold text-xs flex items-center gap-1 shadow-sm transition-colors">
+        <span>+</span> Lập Phiếu Yêu Cầu (ĐNVT)
+      </button>
+      {% endif %}
+      <a href="{{ url_for('export_cdt_excel_report') }}" class="px-2.5 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-1 shadow-sm transition-colors">
+        <span>📥</span> Xuất Excel Gửi CĐT
+      </a>
+    </div>
+  </div>
+
+  <!-- TOOLBAR FILTER FORM -->
+  <form method="GET" action="{{ url_for('reconciliation_cdt_view') }}" class="bg-white p-2.5 rounded border border-slate-300 shadow-sm flex flex-wrap items-center gap-2.5 flex-shrink-0 text-xs">
+    
+    <!-- Lọc theo Số phiếu yêu cầu (PYC) -->
+    <div class="flex items-center gap-1">
+      <span class="text-slate-600 font-medium">Phiếu YC</span>
+      <select name="voucher" class="px-2 py-1 rounded border border-slate-300 bg-slate-50 text-slate-700 font-medium">
+        <option value="">--Tất cả phiếu--</option>
+        {% for v in all_vouchers %}
+          <option value="{{ v }}" {% if voucher_filter == v %}selected{% endif %}>{{ v }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Lọc theo Hãng/Nhóm -->
+    <div class="flex items-center gap-1">
+      <span class="text-slate-600 font-medium">Hãng/Nhãn hiệu</span>
+      <select name="brand" class="px-2 py-1 rounded border border-slate-300 bg-slate-50 text-slate-700 font-medium">
+        <option value="">--Tất cả--</option>
+        {% for b in all_brands %}
+          <option value="{{ b }}" {% if brand_filter == b %}selected{% endif %}>{{ b }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Ô tìm kiếm Tên/Mã NVL -->
+    <div class="flex items-center gap-1 flex-1 min-w-[200px]">
+      <span class="text-slate-600 font-medium">Vật tư</span>
+      <input type="text" name="q" value="{{ search_q }}" placeholder="Nhập mã VT (olsp20...), tên vật tư cần tìm..." class="w-full px-2.5 py-1 rounded border border-slate-300 bg-slate-50 focus:bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+    </div>
+
+    <!-- Nút Lấy dữ liệu -->
+    <button type="submit" class="px-3 py-1 rounded bg-[#195faa] hover:bg-[#124782] text-white font-bold flex items-center gap-1.5 shadow-sm transition-colors whitespace-nowrap">
+      <span>🔍</span> Lấy dữ liệu
+    </button>
+
+    {% if search_q or voucher_filter or brand_filter %}
+      <a href="{{ url_for('reconciliation_cdt_view') }}" class="px-2 py-1 rounded border border-slate-300 text-slate-600 hover:bg-slate-100 text-[11px]">
+        Xóa lọc
+      </a>
+    {% endif %}
+  </form>
+
+  <!-- BẢNG ĐỐI SOÁT CĐT KÉO TRƯỢT (CHUẨN SHEET ĐNVT) -->
+  <div class="flex-1 bg-white rounded border border-slate-300 shadow-sm overflow-hidden flex flex-col">
+    
+    <div class="flex-1 overflow-x-auto overflow-y-auto">
+      <table class="w-full text-xs text-left border-collapse min-w-[1050px]">
+        <thead class="sticky top-0 bg-slate-100 text-slate-700 z-10 border-b border-slate-300 font-bold select-none shadow-sm">
+          <tr>
+            <th class="p-2 border-r border-slate-300 text-center w-12">STT</th>
+            <th class="p-2 border-r border-slate-300 w-24">Số phiếu</th>
+            <th class="p-2 border-r border-slate-300 w-24">Ngày yêu cầu</th>
+            <th class="p-2 border-r border-slate-300 w-28">Mã Vật tư</th>
+            <th class="p-2 border-r border-slate-300 min-w-[200px]">Tên Vật tư</th>
+            <th class="p-2 border-r border-slate-300 w-24">NHÃN HIỆU</th>
+            <th class="p-2 border-r border-slate-300 text-center w-16">Đơn vị</th>
+            <th class="p-2 border-r border-slate-300 text-right w-28 bg-blue-50/50 text-[#195faa] font-bold">SL Yêu cầu</th>
+            <th class="p-2 border-r border-slate-300 text-right w-28 text-emerald-700 bg-emerald-50/50 font-bold">SL nhận</th>
+            <th class="p-2 border-r border-slate-300 text-right w-28 font-bold">Chênh lệch</th>
+            <th class="p-2 border-r border-slate-300 text-center w-32">Trạng thái</th>
+            <th class="p-2">Ghi chú</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-200">
+          {% for row in items %}
+          <tr class="hover:bg-blue-50/40 transition-colors {% if loop.index % 2 == 0 %}bg-slate-50/50{% else %}bg-white{% endif %}">
+            <td class="p-2 text-center text-slate-400 border-r border-slate-200">{{ loop.index }}</td>
+            <td class="p-2 font-bold text-[#195faa] border-r border-slate-200">{{ row.voucher_code }}</td>
+            <td class="p-2 text-slate-600 border-r border-slate-200">{{ row.request_date }}</td>
+            <td class="p-2 font-bold text-slate-800 border-r border-slate-200">{{ row.material_code }}</td>
+            <td class="p-2 font-medium text-slate-800 border-r border-slate-200">{{ row.material_name or row.material_code }}</td>
+            <td class="p-2 text-slate-600 border-r border-slate-200">{{ row.brand or '-' }}</td>
+            <td class="p-2 text-center text-slate-600 border-r border-slate-200 font-medium">{{ row.unit }}</td>
+
+            <!-- SL Yêu cầu (Làm tròn số nguyên) -->
+            <td class="p-2 text-right font-bold text-[#195faa] bg-blue-50/20 border-r border-slate-200">
+              {{ "{:,.0f}".format(row.requested_qty) }}
+            </td>
+
+            <!-- SL Nhận (Tự động tính từ Nhập kho) -->
+            <td class="p-2 text-right font-bold text-emerald-700 bg-emerald-50/20 border-r border-slate-200">
+              {{ "{:,.0f}".format(row.received_qty) }}
+            </td>
+
+            <!-- Chênh lệch = Nhận - Yêu cầu -->
+            <td class="p-2 text-right font-bold border-r border-slate-200 {% if row.diff_qty < 0 %}text-red-600 bg-red-50/40{% elif row.diff_qty == 0 %}text-emerald-700{% else %}text-purple-700{% endif %}">
+              {{ "{:,.0f}".format(row.diff_qty) }}
+            </td>
+
+            <!-- Trạng thái -->
+            <td class="p-2 text-center border-r border-slate-200">
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold {{ row.status_color }}">
+                {{ row.status }}
+              </span>
+            </td>
+
+            <td class="p-2 text-slate-500 text-[11px]">{{ row.notes or '-' }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="12" class="p-8 text-center text-slate-400">Không tìm thấy dòng đề nghị vật tư nào.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Footer Status -->
+    <div class="bg-slate-50 border-t border-slate-300 px-3 py-1.5 flex items-center justify-between text-xs text-slate-500 flex-shrink-0">
+      <div>Công thức: <b class="text-slate-800">SL nhận = Tổng Nhập kho theo Mã VT & Phiếu YC</b> | <b class="text-slate-800">Chênh lệch = SL nhận - SL yêu cầu</b></div>
+      <div class="text-[#195faa] font-semibold">Tự động khớp dữ liệu thời gian thực</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- MODAL LẬP PHIẾU ĐỀ NGHỊ VẬT TƯ (ĐNVT) MỚI -->
+<div id="newRequestModal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-2xl border border-slate-300 w-full max-w-xl flex flex-col overflow-hidden">
+    
+    <div class="bg-[#195faa] text-white p-3.5 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-lg">📋</span>
+        <h3 class="font-bold text-sm">Lập Phiếu Đề Nghị Vật Tư (ĐNVT) Gửi CĐT</h3>
+      </div>
+      <button onclick="closeNewRequestModal()" class="text-white hover:text-blue-200 text-lg font-bold">✕</button>
+    </div>
+
+    <form method="POST" action="{{ url_for('reconciliation_cdt_view') }}" class="p-4 space-y-3 text-xs">
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Số phiếu yêu cầu <span class="text-red-500">*</span></label>
+          <input type="text" name="voucher_code" value="{{ next_request_code }}" required class="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#195faa] font-bold text-[#195faa]">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Ngày yêu cầu <span class="text-red-500">*</span></label>
+          <input type="date" name="request_date" value="{{ today_str }}" required class="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+        </div>
+      </div>
+
+      <div>
+        <label class="block font-semibold text-slate-700 mb-1">Vật tư cần yêu cầu CĐT cấp <span class="text-red-500">*</span></label>
+        <input type="text" name="material_code" list="materialsDatalist" required placeholder="Gõ mã hoặc tên vật tư..." class="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#195faa] font-bold text-slate-800">
+        <datalist id="materialsDatalist">
+          {% for m in materials %}
+            <option value="{{ m.code }}">{{ m.code }} - {{ m.name }} ({{ m.unit }})</option>
+          {% endfor %}
+        </datalist>
+      </div>
+
+      <div>
+        <label class="block font-semibold text-slate-700 mb-1">Số lượng yêu cầu <span class="text-red-500">*</span></label>
+        <input type="number" step="1" name="requested_qty" value="1000" required class="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#195faa] font-bold text-[#195faa]">
+      </div>
+
+      <div>
+        <label class="block font-semibold text-slate-700 mb-1">Ghi chú</label>
+        <input type="text" name="notes" placeholder="Đợt cấp hàng 2, giao trước ngày..." class="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+      </div>
+
+      <div class="pt-3 border-t border-slate-200 flex justify-end gap-2">
+        <button type="button" onclick="closeNewRequestModal()" class="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-100 text-slate-700 font-medium">
+          Hủy bỏ
+        </button>
+        <button type="submit" class="px-4 py-1.5 rounded bg-[#195faa] hover:bg-[#124782] text-white font-bold shadow transition-colors">
+          Lưu Phiếu Đề Nghị
+        </button>
+      </div>
+    </form>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function openNewRequestModal() {
+    document.getElementById('newRequestModal').classList.remove('hidden');
+  }
+  function closeNewRequestModal() {
+    document.getElementById('newRequestModal').classList.add('hidden');
+  }
+</script>
+{% endblock %}
+

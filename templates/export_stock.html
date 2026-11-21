@@ -1,0 +1,680 @@
+{% extends "base.html" %}
+
+{% block title %}Xuất kho - QUẢN LÝ TỒN KHO BIGCOM{% endblock %}
+
+{% block content %}
+<div class="flex-1 flex flex-col h-full space-y-2 overflow-hidden">
+
+  <!-- TOP HEADER & ACTION BAR -->
+  <div class="flex items-center justify-between flex-shrink-0">
+    <div class="flex items-center gap-2">
+      <h1 class="text-base font-bold text-slate-800 tracking-tight flex items-center gap-2">
+        <span>Kho</span>
+        <span class="text-slate-400 font-normal">/</span>
+        <span class="text-xs font-semibold text-[#195faa]">Xuất kho</span>
+      </h1>
+      <span class="text-[11px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold">
+        {{ issues|length }} Lượt Xuất
+      </span>
+      <span class="text-xs text-slate-500 ml-2 hidden sm:inline">Số phiếu kế tiếp: <b class="text-[#195faa] font-bold">{{ next_voucher_code }}</b></span>
+    </div>
+
+    <!-- Quick Action Buttons -->
+    <div class="flex items-center gap-2">
+      {% if can_edit %}
+      <button type="button" onclick="openExportModal()" class="px-3 py-1.5 rounded bg-[#195faa] hover:bg-[#124782] text-white font-semibold text-xs flex items-center gap-1.5 shadow-sm transition-colors">
+        <span>+</span> Xuất vật tư
+      </button>
+      <button type="button" onclick="openTeamModal()" class="px-2.5 py-1.5 rounded border border-purple-300 bg-purple-50 hover:bg-purple-100 text-purple-700 font-semibold text-xs flex items-center gap-1 shadow-sm transition-colors">
+        <span>⚙️</span> Tổ đội
+      </button>
+      {% endif %}
+      <a href="{{ url_for('export_issues_excel', q=search_q, team=team_filter, from_date=from_date, to_date=to_date) }}" class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-sm transition-colors">
+        <span>📥</span> Xuất Excel
+      </a>
+    </div>
+  </div>
+
+  <!-- TOOLBAR FILTER FORM -->
+  <form method="GET" action="{{ url_for('export_stock_view') }}" class="bg-white p-2.5 rounded border border-slate-300 shadow-sm flex flex-wrap items-center gap-2.5 flex-shrink-0 text-xs">
+    
+    <!-- Lọc Ngày tháng -->
+    <div class="flex items-center gap-1.5">
+      <span class="text-slate-600 font-medium">Từ ngày</span>
+      <input type="date" name="from_date" value="{{ from_date }}" class="px-2 py-1 rounded border border-slate-300 text-slate-700 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+      <span class="text-slate-600 font-medium">Đến</span>
+      <input type="date" name="to_date" value="{{ to_date }}" class="px-2 py-1 rounded border border-slate-300 text-slate-700 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+    </div>
+
+    <div class="h-4 w-px bg-slate-300 hidden md:block"></div>
+
+    <!-- Lọc Tổ Đội -->
+    <div class="flex items-center gap-1">
+      <span class="text-slate-600 font-medium">Tổ Đội Nhận</span>
+      <select id="mainTeamFilterSelect" name="team" class="px-2 py-1 rounded border border-slate-300 bg-slate-50 text-slate-700 font-medium focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+        <option value="">--Tất cả tổ đội--</option>
+        {% for t in all_teams %}
+          <option value="{{ t }}" {% if team_filter == t %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Ô tìm kiếm từ khóa -->
+    <div class="flex items-center gap-1 flex-1 min-w-[200px]">
+      <span class="text-slate-600 font-medium">NVL</span>
+      <input type="text" name="q" value="{{ search_q }}" placeholder="Tìm theo số phiếu, mã VT, tên vật tư, người nhận, ghi chú..." class="w-full px-2.5 py-1 rounded border border-slate-300 bg-slate-50 focus:bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+    </div>
+
+    <!-- Nút Lấy dữ liệu -->
+    <button type="submit" class="px-3 py-1 rounded bg-[#195faa] hover:bg-[#124782] text-white font-bold flex items-center gap-1.5 shadow-sm transition-colors whitespace-nowrap">
+      <span>🔍</span> Lấy dữ liệu
+    </button>
+
+    {% if search_q or team_filter or from_date or to_date %}
+      <a href="{{ url_for('export_stock_view') }}" class="px-2 py-1 rounded border border-slate-300 text-slate-600 hover:bg-slate-100 text-[11px]">
+        Xóa lọc
+      </a>
+    {% endif %}
+  </form>
+
+  <!-- BẢNG HIỂN THỊ CHỦ YẾU: LỊCH SỬ XUẤT KHO (STICKY HEADER, CUỘN 2 CHIỀU) -->
+  <div class="flex-1 bg-white rounded border border-slate-300 shadow-sm overflow-hidden flex flex-col">
+    
+    <div class="flex-1 overflow-x-auto overflow-y-auto">
+      <table class="w-full text-xs text-left border-collapse min-w-[1150px]">
+        <thead class="sticky top-0 bg-slate-100 text-slate-700 z-10 border-b border-slate-300 font-bold select-none shadow-sm">
+          <tr>
+            <th class="p-2 border-r border-slate-300 text-center w-12 bg-slate-100">STT</th>
+            <th class="p-2 border-r border-slate-300 text-center w-24">Số Phiếu</th>
+            <th class="p-2 border-r border-slate-300 text-center w-24">Ngày Xuất</th>
+            <th class="p-2 border-r border-slate-300 w-28 whitespace-nowrap">Mã VT</th>
+            <th class="p-2 border-r border-slate-300 min-w-[220px]">Tên Chi Tiết Vật Tư</th>
+            <th class="p-2 border-r border-slate-300 text-center min-w-[110px]">Hãng</th>
+            <th class="p-2 border-r border-slate-300 text-center w-16">ĐVT</th>
+            <th class="p-2 border-r border-slate-300 text-right w-28 text-amber-800 bg-amber-50/50">Số Lượng Xuất</th>
+            <th class="p-2 border-r border-slate-300 text-center min-w-[130px]">Tổ Đội Nhận</th>
+            <th class="p-2 border-r border-slate-300 text-center min-w-[130px]">Người Nhận</th>
+            <th class="p-2 border-r border-slate-300 min-w-[160px]">Ghi Chú Vị Trí / Hạng Mục</th>
+            <th class="p-2 text-center w-28">Người Xuất</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-200">
+          {% for i in issues %}
+          <tr class="hover:bg-amber-50/40 transition-colors {% if loop.index % 2 == 0 %}bg-slate-50/60{% else %}bg-white{% endif %}">
+            <td class="p-2 border-r border-slate-200 text-center text-slate-500 font-medium">{{ loop.index }}</td>
+            <td class="p-2 border-r border-slate-200 text-center font-bold text-amber-600 whitespace-nowrap">{{ i.voucher_code }}</td>
+            <td class="p-2 border-r border-slate-200 text-center text-slate-600 whitespace-nowrap">{{ i.voucher_date }}</td>
+            <td class="p-2 border-r border-slate-200 font-bold text-slate-700 whitespace-nowrap">{{ i.material_code }}</td>
+            <td class="p-2 border-r border-slate-200 font-semibold text-slate-800">{{ i.material_name or i.material_code }}</td>
+            <td class="p-2 border-r border-slate-200 text-center text-slate-600">{{ i.brand or '-' }}</td>
+            <td class="p-2 border-r border-slate-200 text-center font-medium text-slate-600">{{ i.unit or '-' }}</td>
+            <td class="p-2 border-r border-slate-200 text-right font-bold text-sm text-amber-700 bg-amber-50/20">
+              {{ "{:,.0f}".format(i.quantity) }}
+            </td>
+            <td class="p-2 border-r border-slate-200 text-center font-bold text-purple-700">{{ i.team or '-' }}</td>
+            <td class="p-2 border-r border-slate-200 text-center text-slate-700 font-medium">{{ i.receiver or '-' }}</td>
+            <td class="p-2 border-r border-slate-200 text-slate-500 text-[11px]">{{ i.notes or '-' }}</td>
+            <td class="p-2 text-center text-slate-600 text-[11px]">{{ i.created_by or '-' }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="12" class="p-8 text-center text-slate-400">Không tìm thấy dữ liệu phiếu xuất kho nào khớp với điều kiện lọc.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination Footer -->
+    <div class="bg-slate-50 border-t border-slate-300 px-3 py-1.5 flex items-center justify-between text-xs text-slate-600 flex-shrink-0">
+      <div>Hiển thị <b class="text-slate-800">{{ issues|length }}</b> lượt xuất kho</div>
+      <div class="text-[11px] text-slate-500">Mới nhất xếp trên • Số lượng đã làm tròn số nguyên • Kiểm soát tồn khả dụng</div>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- ============================================================================== -->
+<!-- CỬA SỔ MODAL XUẤT VẬT TƯ CHO TỔ ĐỘI (KÍCH CỠ LỚN, CÓ STT, CĂN GIỮA HÃNG) -->
+<!-- ============================================================================== -->
+
+<div id="exportModal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-3">
+  <div class="bg-white rounded-xl shadow-2xl border border-slate-300 w-full max-w-6xl max-h-[95vh] flex flex-col overflow-hidden">
+    
+    <!-- Modal Header -->
+    <div class="bg-[#195faa] text-white p-3.5 flex items-center justify-between flex-shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-lg">📤</span>
+        <h3 class="font-bold text-sm">Lập Phiếu Xuất Kho Cấp Phát Vật Tư (Số Phiếu Kế Tiếp: {{ next_voucher_code }})</h3>
+      </div>
+      <button type="button" onclick="closeExportModal()" class="text-white hover:text-blue-200 text-lg font-bold">✕</button>
+    </div>
+
+    <!-- Modal Content Body -->
+    <div class="p-4 overflow-y-auto flex-1 text-xs">
+      <form method="POST" action="{{ url_for('export_stock_view') }}" class="space-y-3">
+        
+        <div class="flex items-center justify-between border-b border-slate-200 pb-1.5">
+          <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wide">THÔNG TIN PHIẾU XUẤT CHO TỔ ĐỘI</h4>
+          <span class="text-[11px] text-slate-500">Người xuất: <b>{{ current_user.full_name }}</b></span>
+        </div>
+
+        <!-- Thông tin chung của phiếu -->
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Số phiếu xuất <span class="text-red-500">*</span></label>
+            <input type="text" name="voucher_code" id="export_voucher_code" value="{{ next_voucher_code }}" required class="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#195faa] font-bold text-[#195faa] bg-blue-50/30">
+          </div>
+
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Ngày xuất <span class="text-red-500">*</span></label>
+            <input type="date" name="voucher_date" id="export_voucher_date" value="{{ today_str }}" required class="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="font-semibold text-slate-700">Tổ Đội Nhận <span class="text-red-500">*</span></label>
+              <button type="button" onclick="openTeamModal()" class="text-[11px] text-purple-700 hover:text-purple-900 font-bold flex items-center gap-0.5 underline">
+                <span>⚙️ Quản lý Tổ đội</span>
+              </button>
+            </div>
+            <div class="flex items-center gap-1">
+              <input type="text" name="team" id="export_team_input" list="teamsList" value="{% if all_teams %}{{ all_teams[0] }}{% else %}Dũng{% endif %}" required placeholder="Chọn hoặc nhập tên tổ đội..." class="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#195faa] font-bold text-purple-700">
+            </div>
+            <datalist id="teamsList">
+              {% for t in all_teams %}
+                <option value="{{ t }}"></option>
+              {% endfor %}
+            </datalist>
+          </div>
+
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Người Nhận Bàn Giao <span class="text-red-500">*</span></label>
+            <input type="text" name="receiver" id="export_receiver" value="Biên" required placeholder="Tên người ký nhận" class="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Ghi chú vị trí thi công / Hạng mục</label>
+          <input type="text" name="notes" placeholder="Trục A-B, Tầng 3, Hầm B1, Căn hộ..." class="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+        </div>
+
+        <!-- BẢNG CHI TIẾT VẬT TƯ: CÓ CỘT STT, HỖ TRỢ NHẬP CẢ THEO TÊN LẪN THEO MÃ, HÃNG CĂN GIỮA, KIỂM TRA TỒN KHO -->
+        <div class="border border-slate-300 rounded overflow-hidden mt-2">
+          <div class="bg-slate-100 p-2 font-bold text-xs text-slate-700 border-b border-slate-300 flex items-center justify-between">
+            <span>DANH SÁCH VẬT TƯ CẤP PHÁT</span>
+            <span class="text-[11px] font-normal text-slate-500">💡 Có thể chọn hoặc gõ tìm kiếm theo <b>Tên chi tiết</b> hoặc <b>Mã vật tư</b> • Tự động kiểm tra tồn khả dụng</span>
+          </div>
+
+          <div class="overflow-x-auto max-h-[50vh] overflow-y-auto">
+            <table class="w-full text-xs text-left border-collapse min-w-[950px]">
+              <thead class="bg-slate-50 border-b border-slate-300 text-slate-600 font-semibold sticky top-0 z-10">
+                <tr>
+                  <th class="p-2 w-12 border-r border-slate-200 text-center bg-slate-50">STT</th>
+                  <th class="p-2 w-44 border-r border-slate-200">Mã Vật Tư <span class="text-red-500">*</span></th>
+                  <th class="p-2 border-r border-slate-200 min-w-[260px]">Tên Chi Tiết Vật Tư (Gõ tìm) <span class="text-red-500">*</span></th>
+                  <th class="p-2 w-28 border-r border-slate-200 text-center">Hãng</th>
+                  <th class="p-2 w-16 text-center border-r border-slate-200">ĐVT</th>
+                  <th class="p-2 w-28 text-right border-r border-slate-200 text-[#195faa] font-bold">Tồn Khả Dụng</th>
+                  <th class="p-2 w-32 text-right border-r border-slate-200 text-amber-700 font-bold">Số Lượng Xuất <span class="text-red-500">*</span></th>
+                  <th class="p-2 w-28 text-center border-r border-slate-200">Tồn Sau Xuất</th>
+                  <th class="p-2 w-12 text-center">Xóa</th>
+                </tr>
+              </thead>
+              <tbody id="exportItemsTableBody" class="divide-y divide-slate-200">
+                <tr>
+                  <!-- Cột STT -->
+                  <td class="p-1.5 border-r border-slate-200 text-center font-bold text-slate-500 row-stt">1</td>
+
+                  <!-- Ô Mã VT -->
+                  <td class="p-1.5 border-r border-slate-200">
+                    <input type="text" name="material_code[]" list="materialsCodeList" oninput="onCodeInput(this)" placeholder="Gõ/chọn mã..." required class="mat-code-input w-full px-2 py-1 rounded border border-slate-300 font-bold text-[#195faa] focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+                  </td>
+
+                  <!-- Ô Tên VT (Hỗ trợ tìm kiếm theo tên chi tiết) -->
+                  <td class="p-1.5 border-r border-slate-200">
+                    <input type="text" name="material_name_input[]" list="materialsNameList" oninput="onNameInput(this)" placeholder="Gõ tên vật tư cần tìm..." class="mat-name-input w-full px-2 py-1 rounded border border-slate-300 font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+                  </td>
+
+                  <!-- Hãng (Căn giữa ô) -->
+                  <td class="p-1.5 border-r border-slate-200 text-center text-slate-600">
+                    <span class="mat-brand text-slate-600">-</span>
+                  </td>
+
+                  <!-- ĐVT -->
+                  <td class="p-1.5 border-r border-slate-200 text-center font-semibold text-slate-600">
+                    <span class="mat-unit">-</span>
+                  </td>
+
+                  <!-- Tồn Khả Dụng -->
+                  <td class="p-1.5 border-r border-slate-200 text-right font-bold text-[#195faa]">
+                    <span class="exp-stock">-</span>
+                  </td>
+
+                  <!-- Số Lượng Xuất -->
+                  <td class="p-1.5 border-r border-slate-200 text-right">
+                    <input type="number" step="1" name="quantity[]" value="10" oninput="calculateRowRemaining(this)" required class="mat-qty-input w-full px-2 py-1 text-right rounded border border-slate-300 font-bold text-amber-700 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+                  </td>
+
+                  <!-- Tồn Sau Xuất -->
+                  <td class="p-1.5 border-r border-slate-200 text-center font-bold text-slate-600">
+                    <span class="exp-remaining">-</span>
+                  </td>
+
+                  <!-- Xóa dòng -->
+                  <td class="p-1.5 text-center">
+                    <button type="button" onclick="removeMaterialRow(this)" class="text-slate-400 hover:text-red-600 font-bold text-sm">✕</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Buttons Footer of Form -->
+        <div class="flex items-center justify-between pt-2 border-t border-slate-200">
+          <button type="button" onclick="addNewMaterialRow()" class="px-3 py-1.5 rounded border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold text-xs flex items-center gap-1 transition-colors">
+            <span>+</span> Thêm Dòng Vật Tư
+          </button>
+
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="closeExportModal()" class="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-100 text-slate-700 font-medium">Hủy</button>
+            <button type="submit" class="px-4 py-1.5 rounded bg-[#195faa] hover:bg-[#124782] text-white font-bold text-xs shadow transition-colors flex items-center gap-1.5">
+              <span>📤</span> XÁC NHẬN XUẤT KHO (SỐ {{ next_voucher_code }})
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ============================================================================== -->
+<!-- CỬA SỔ QUẢN LÝ TỔ ĐỘI (THÊM / BỚT TỔ ĐỘI ĐỘNG) -->
+<!-- ============================================================================== -->
+
+<div id="teamManageModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3">
+  <div class="bg-white rounded-xl shadow-2xl border border-slate-300 w-full max-w-md flex flex-col overflow-hidden">
+    
+    <!-- Modal Header -->
+    <div class="bg-purple-800 text-white p-3.5 flex items-center justify-between flex-shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-lg">⚙️</span>
+        <h3 class="font-bold text-sm">Quản Lý Danh Sách Tổ Đội Nhận</h3>
+      </div>
+      <button type="button" onclick="closeTeamModal()" class="text-white hover:text-purple-200 text-lg font-bold">✕</button>
+    </div>
+
+    <!-- Modal Body -->
+    <div class="p-4 space-y-4 text-xs">
+      
+      <!-- Form Thêm Tổ Đội Mới -->
+      <div class="bg-purple-50 p-3 rounded-lg border border-purple-200 space-y-2">
+        <label class="block font-bold text-purple-900">Thêm tổ đội nhận mới:</label>
+        <div class="flex items-center gap-2">
+          <input type="text" id="newTeamInput" placeholder="Ví dụ: Tổ Điện 1, Tổ Cơ Điện, Tổ Dũng..." class="flex-1 px-2.5 py-1.5 rounded border border-purple-300 bg-white font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-600">
+          <button type="button" onclick="handleAddTeam()" class="px-3 py-1.5 rounded bg-purple-700 hover:bg-purple-800 text-white font-bold whitespace-nowrap shadow-sm transition-colors">
+            + Thêm
+          </button>
+        </div>
+        <div id="teamAlertMsg" class="text-[11px] font-semibold hidden"></div>
+      </div>
+
+      <!-- Danh Sách Các Tổ Đội Hiện Có -->
+      <div>
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="font-bold text-slate-700 uppercase tracking-wide">Danh sách tổ đội hiện hành</span>
+          <span id="teamsCountBadge" class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[11px] font-bold">{{ all_teams|length }} đội</span>
+        </div>
+
+        <div class="border border-slate-300 rounded max-h-56 overflow-y-auto divide-y divide-slate-200 bg-white" id="teamListContainer">
+          {% for t in all_teams %}
+          <div class="flex items-center justify-between p-2 hover:bg-slate-50 transition-colors">
+            <span class="font-bold text-purple-800">{{ t }}</span>
+            <button type="button" onclick="handleDeleteTeam('{{ t }}')" class="px-2 py-0.5 rounded text-red-600 hover:text-white hover:bg-red-600 font-bold text-[11px] border border-red-200 transition-colors">
+              🗑️ Xóa
+            </button>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="pt-2 border-t border-slate-200 flex justify-end">
+        <button type="button" onclick="closeTeamModal()" class="px-4 py-1.5 rounded bg-slate-600 hover:bg-slate-700 text-white font-semibold text-xs">
+          Đóng
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<!-- Datalists hỗ trợ Autocomplete 2 chiều cho Mã VT và Tên VT -->
+<datalist id="materialsCodeList">
+  {% for m in materials %}
+    <option value="{{ m.code }}">{{ m.name }} ({{ m.brand or '-' }})</option>
+  {% endfor %}
+</datalist>
+
+<datalist id="materialsNameList">
+  {% for m in materials %}
+    <option value="{{ m.name }} (Mã: {{ m.code }})"></option>
+  {% endfor %}
+</datalist>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+  // Dữ liệu danh mục vật tư phục vụ Autocomplete 2 chiều
+  const materialsData = [
+    {% for m in materials %}
+    {
+      code: {{ m.code | tojson }},
+      name: {{ m.name | tojson }},
+      brand: {{ (m.brand or '') | tojson }},
+      unit: {{ (m.unit or '') | tojson }}
+    },
+    {% endfor %}
+  ];
+
+  // Bản đồ tra cứu theo Code và theo Name
+  const byCodeMap = {};
+  const byNameMap = {};
+  materialsData.forEach(m => {
+    byCodeMap[m.code.toLowerCase()] = m;
+    byNameMap[m.name.toLowerCase()] = m;
+  });
+
+  // Modal Open/Close Controls
+  function openExportModal() {
+    document.getElementById('exportModal').classList.remove('hidden');
+  }
+
+  function closeExportModal() {
+    document.getElementById('exportModal').classList.add('hidden');
+  }
+
+  function openTeamModal() {
+    document.getElementById('teamManageModal').classList.remove('hidden');
+    document.getElementById('newTeamInput').focus();
+  }
+
+  function closeTeamModal() {
+    document.getElementById('teamManageModal').classList.add('hidden');
+  }
+
+  // Khi người dùng gõ / chọn Mã VT -> tự động điền Tên chi tiết, Hãng, ĐVT và lấy Tồn kho
+  async function onCodeInput(input) {
+    const val = input.value.trim().toLowerCase();
+    const row = input.closest('tr');
+    const nameInput = row.querySelector('.mat-name-input');
+    const brandSpan = row.querySelector('.mat-brand');
+    const unitSpan = row.querySelector('.mat-unit');
+    const stockSpan = row.querySelector('.exp-stock');
+
+    if (!val) return;
+
+    if (byCodeMap[val]) {
+      const m = byCodeMap[val];
+      nameInput.value = m.name;
+      brandSpan.textContent = m.brand || '-';
+      unitSpan.textContent = m.unit;
+
+      await fetchCurrentStock(row, m.code);
+    }
+  }
+
+  // Khi người dùng gõ / chọn Tên VT -> tự động tìm kiếm gợi ý và điền ngược lại Mã, Hãng, ĐVT, Tồn kho
+  async function onNameInput(input) {
+    const val = input.value.trim().toLowerCase();
+    const row = input.closest('tr');
+    const codeInput = row.querySelector('.mat-code-input');
+    const brandSpan = row.querySelector('.mat-brand');
+    const unitSpan = row.querySelector('.mat-unit');
+
+    if (!val) return;
+
+    // 1. Khớp chính xác tên
+    if (byNameMap[val]) {
+      const m = byNameMap[val];
+      codeInput.value = m.code;
+      brandSpan.textContent = m.brand || '-';
+      unitSpan.textContent = m.unit;
+      await fetchCurrentStock(row, m.code);
+      return;
+    }
+
+    // 2. Nếu chuỗi có dạng "Tên (Mã: xxx)" từ datalist
+    const codeInBracketMatch = input.value.match(/\(Mã:\s*([^)]+)\)/i);
+    if (codeInBracketMatch && codeInBracketMatch[1]) {
+      const extractedCode = codeInBracketMatch[1].trim().toLowerCase();
+      if (byCodeMap[extractedCode]) {
+        const m = byCodeMap[extractedCode];
+        codeInput.value = m.code;
+        input.value = m.name;
+        brandSpan.textContent = m.brand || '-';
+        unitSpan.textContent = m.unit;
+        await fetchCurrentStock(row, m.code);
+        return;
+      }
+    }
+
+    // 3. Khớp tương đối theo tên chứa từ khóa
+    const found = materialsData.find(m => m.name.toLowerCase() === val || (val.length >= 3 && m.name.toLowerCase().startsWith(val)));
+    if (found) {
+      codeInput.value = found.code;
+      brandSpan.textContent = found.brand || '-';
+      unitSpan.textContent = found.unit;
+      await fetchCurrentStock(row, found.code);
+    }
+  }
+
+  // Tra cứu tồn kho khả dụng thời gian thực từ API
+  async function fetchCurrentStock(row, code) {
+    try {
+      const res = await fetch(`/api/check-stock?code=${encodeURIComponent(code)}`);
+      const data = await res.json();
+      const stock = Math.round(data.current_stock || 0);
+      row.dataset.currentStock = stock;
+      row.querySelector('.exp-stock').textContent = stock.toLocaleString();
+      calculateRowRemaining(row.querySelector('.mat-qty-input'));
+    } catch (err) {
+      console.error("Lỗi tra cứu tồn kho:", err);
+    }
+  }
+
+  // Tính toán tồn sau xuất và cảnh báo xuất âm kho
+  function calculateRowRemaining(qtyInput) {
+    const row = qtyInput.closest('tr');
+    const stock = Math.round(parseFloat(row.dataset.currentStock) || 0);
+    const qty = Math.round(parseFloat(qtyInput.value) || 0);
+    const remaining = stock - qty;
+    const remSpan = row.querySelector('.exp-remaining');
+
+    if (row.dataset.currentStock === undefined) {
+      remSpan.innerHTML = `<span class="text-slate-400">-</span>`;
+      return;
+    }
+
+    if (remaining < 0) {
+      remSpan.innerHTML = `<span class="text-red-600 bg-red-100 px-1 py-0.5 rounded text-[10px] font-bold">Âm ${Math.abs(remaining).toLocaleString()}!</span>`;
+      qtyInput.classList.add('border-red-500', 'bg-red-50');
+    } else {
+      remSpan.innerHTML = `<span class="text-emerald-700 font-bold">${remaining.toLocaleString()}</span>`;
+      qtyInput.classList.remove('border-red-500', 'bg-red-50');
+    }
+  }
+
+  // Cập nhật số thứ tự (STT) tự động
+  function updateRowSTT() {
+    const rows = document.querySelectorAll('#exportItemsTableBody tr');
+    rows.forEach((row, idx) => {
+      const sttCell = row.querySelector('.row-stt');
+      if (sttCell) sttCell.textContent = idx + 1;
+    });
+  }
+
+  // Xóa 1 dòng vật tư khỏi bảng
+  function removeMaterialRow(btn) {
+    const tbody = document.getElementById('exportItemsTableBody');
+    if (tbody.querySelectorAll('tr').length > 1) {
+      btn.closest('tr').remove();
+      updateRowSTT();
+    } else {
+      alert("Phiếu xuất phải có ít nhất 1 dòng vật tư.");
+    }
+  }
+
+  // Thêm 1 dòng vật tư mới
+  function addNewMaterialRow(code = '', name = '', brand = '', unit = '', qty = 10) {
+    const tbody = document.getElementById('exportItemsTableBody');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="p-1.5 border-r border-slate-200 text-center font-bold text-slate-500 row-stt"></td>
+      <td class="p-1.5 border-r border-slate-200">
+        <input type="text" name="material_code[]" value="${code}" list="materialsCodeList" oninput="onCodeInput(this)" placeholder="Gõ/chọn mã..." required class="mat-code-input w-full px-2 py-1 rounded border border-slate-300 font-bold text-[#195faa] focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+      </td>
+      <td class="p-1.5 border-r border-slate-200">
+        <input type="text" name="material_name_input[]" value="${name}" list="materialsNameList" oninput="onNameInput(this)" placeholder="Gõ tên vật tư cần tìm..." class="mat-name-input w-full px-2 py-1 rounded border border-slate-300 font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+      </td>
+      <td class="p-1.5 border-r border-slate-200 text-center text-slate-600">
+        <span class="mat-brand text-slate-600">${brand || '-'}</span>
+      </td>
+      <td class="p-1.5 border-r border-slate-200 text-center font-semibold text-slate-600">
+        <span class="mat-unit">${unit || '-'}</span>
+      </td>
+      <td class="p-1.5 border-r border-slate-200 text-right font-bold text-[#195faa]">
+        <span class="exp-stock">-</span>
+      </td>
+      <td class="p-1.5 border-r border-slate-200 text-right">
+        <input type="number" step="1" name="quantity[]" value="${Math.round(qty)}" oninput="calculateRowRemaining(this)" required class="mat-qty-input w-full px-2 py-1 text-right rounded border border-slate-300 font-bold text-amber-700 focus:outline-none focus:ring-1 focus:ring-[#195faa]">
+      </td>
+      <td class="p-1.5 border-r border-slate-200 text-center font-bold text-slate-600">
+        <span class="exp-remaining">-</span>
+      </td>
+      <td class="p-1.5 text-center">
+        <button type="button" onclick="removeMaterialRow(this)" class="text-slate-400 hover:text-red-600 font-bold text-sm">✕</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+    updateRowSTT();
+
+    if (code) {
+      fetchCurrentStock(tr, code);
+    }
+  }
+
+  // ==============================================================================
+  // XỬ LÝ QUẢN LÝ TỔ ĐỘI QUA AJAX (THÊM / BỚT TỔ ĐỘI ĐỘNG)
+  // ==============================================================================
+
+  function renderTeamsUI(teams) {
+    // 1. Cập nhật danh sách trong Modal Quản lý tổ đội
+    const container = document.getElementById('teamListContainer');
+    container.innerHTML = '';
+    teams.forEach(t => {
+      const row = document.createElement('div');
+      row.className = "flex items-center justify-between p-2 hover:bg-slate-50 transition-colors";
+      row.innerHTML = `
+        <span class="font-bold text-purple-800">${t}</span>
+        <button type="button" onclick="handleDeleteTeam('${t}')" class="px-2 py-0.5 rounded text-red-600 hover:text-white hover:bg-red-600 font-bold text-[11px] border border-red-200 transition-colors">
+          🗑️ Xóa
+        </button>
+      `;
+      container.appendChild(row);
+    });
+
+    document.getElementById('teamsCountBadge').textContent = `${teams.length} đội`;
+
+    // 2. Cập nhật datalist #teamsList trong Modal xuất vật tư
+    const datalist = document.getElementById('teamsList');
+    datalist.innerHTML = '';
+    teams.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t;
+      datalist.appendChild(opt);
+    });
+
+    // 3. Cập nhật dropdown bộ lọc tổ đội ở Toolbar chính
+    const mainSelect = document.getElementById('mainTeamFilterSelect');
+    const currentVal = mainSelect.value;
+    mainSelect.innerHTML = '<option value="">--Tất cả tổ đội--</option>';
+    teams.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t;
+      opt.textContent = t;
+      if (t === currentVal) opt.selected = true;
+      mainSelect.appendChild(opt);
+    });
+  }
+
+  async function handleAddTeam() {
+    const input = document.getElementById('newTeamInput');
+    const name = input.value.trim();
+    const alertBox = document.getElementById('teamAlertMsg');
+
+    if (!name) {
+      alertBox.textContent = "Vui lòng nhập tên tổ đội.";
+      alertBox.className = "text-[11px] font-semibold text-red-600 block";
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/teams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name })
+      });
+      const data = await res.json();
+      if (data.success) {
+        input.value = '';
+        alertBox.textContent = data.message;
+        alertBox.className = "text-[11px] font-semibold text-emerald-600 block";
+        renderTeamsUI(data.teams);
+        // Tự động gán vào ô nhập tổ đội của phiếu xuất
+        document.getElementById('export_team_input').value = name;
+      } else {
+        alertBox.textContent = data.message;
+        alertBox.className = "text-[11px] font-semibold text-red-600 block";
+      }
+    } catch (err) {
+      alertBox.textContent = "Lỗi kết nối máy chủ: " + err.message;
+      alertBox.className = "text-[11px] font-semibold text-red-600 block";
+    }
+  }
+
+  async function handleDeleteTeam(name) {
+    if (!confirm(`Bạn có chắc chắn muốn xóa tổ đội '${name}'?`)) {
+      return;
+    }
+
+    const alertBox = document.getElementById('teamAlertMsg');
+
+    try {
+      const res = await fetch('/api/teams/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alertBox.textContent = data.message;
+        alertBox.className = "text-[11px] font-semibold text-emerald-600 block";
+        renderTeamsUI(data.teams);
+      } else {
+        alertBox.textContent = data.message;
+        alertBox.className = "text-[11px] font-semibold text-red-600 block";
+      }
+    } catch (err) {
+      alertBox.textContent = "Lỗi kết nối: " + err.message;
+      alertBox.className = "text-[11px] font-semibold text-red-600 block";
+    }
+  }
+</script>
+{% endblock %}
